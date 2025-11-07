@@ -6,11 +6,11 @@
 #pragma once
 
 /**
- * @ingroup     boards_esp32_heltec-lora32-v2
- * @brief       Peripheral MCU configuration for Heltec WiFi LoRa 32 V2 board
+ * @ingroup     boards_esp32_heltec-lora32-v3
+ * @brief       Peripheral MCU configuration for Heltec WiFi LoRa 32 V3 board
  * @{
  *
- * Heltec WiFi LoRa 32 V2 is an ESP32 development board with 8 MB Flash that
+ * Heltec WiFi LoRa 32 V3 is an ESP32 development board with 8 MB Flash that
  * uses the EPS32 chip directly. It integrates a SemTech SX1276 or SX1278 for
  * LoRaWAN communication in the 433 MHz or the 868/915 MHz band, respectively.
  * Additionally, it has an OLED display connected via I2C on board.
@@ -29,7 +29,7 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
- extern "C" {
+extern "C" {
 #endif
 
 /**
@@ -45,8 +45,7 @@
  * purposes.
  */
 #ifndef ADC_GPIOS
-#define ADC_GPIOS   { GPIO36, GPIO39, GPIO37, GPIO38, \
-                      GPIO0, GPIO2, GPIO12, GPIO13, GPIO4, GPIO15 }
+#  define ADC_GPIOS { GPIO1, GPIO2, GPIO3, GPIO4, GPIO5, GPIO6, GPIO7 GPIO19, GPIO20 }
 #endif
 
 /**
@@ -60,7 +59,9 @@
  * GPIOs left that can be used as DAC channels.
  */
 #ifndef DAC_GPIOS
-#define DAC_GPIOS   { }
+#  define DAC_GPIOS \
+      {             \
+      }
 #endif
 /** @} */
 
@@ -76,13 +77,13 @@
  * @{
  */
 #ifndef I2C0_SPEED
-#define I2C0_SPEED  I2C_SPEED_FAST  /**< I2C bus speed of I2C_DEV(0) */
+#  define I2C0_SPEED I2C_SPEED_FAST /**< I2C bus speed of I2C_DEV(0) */
 #endif
 #ifndef I2C0_SCL
-#define I2C0_SCL    GPIO15          /**< SCL signal of I2C_DEV(0) [UEXT1] */
+#  define I2C0_SCL GPIO18 /**< SCL signal of I2C_DEV(0) [UEXT1] */
 #endif
 #ifndef I2C0_SDA
-#define I2C0_SDA    GPIO4           /**< SDA signal of I2C_DEV(0) [UEXT1] */
+#  define I2C0_SDA GPIO17 /**< SDA signal of I2C_DEV(0) [UEXT1] */
 #endif
 /** @} */
 
@@ -93,16 +94,13 @@
  * the `pwm_init`, the GPIOs declared for this device can be used
  * for other purposes.
  *
+ * The ESP32S3 allows for two motor control PWM pins
+ *
  * @{
  */
 /** PWM channels for device PWM_DEV(0) */
 #ifndef PWM0_GPIOS
-#define PWM0_GPIOS  { GPIO25, GPIO17, GPIO2 }
-#endif
-
-/** PWM_DEV(1) is not used */
-#ifndef PWM1_GPIOS
-#define PWM1_GPIOS  { GPIO22, GPIO23 }
+#  define PWM0_GPIOS { GPIO48, GPIO47 }
 #endif
 /** @} */
 
@@ -118,48 +116,34 @@
  * @{
  */
 #ifndef SPI0_CTRL
-#define SPI0_CTRL   VSPI    /**< VSPI is used as SPI_DEV(0) */
+#  define SPI0_CTRL FSPI /**< FSPI is used as SPI_DEV(0) */
 #endif
 #ifndef SPI0_SCK
-#define SPI0_SCK    GPIO5   /**< VSPI SCK */
+#  define SPI0_SCK GPIO9 /**< Non-Default FSPI SCK */
 #endif
 #ifndef SPI0_MISO
-#define SPI0_MISO   GPIO19  /**< VSPI MISO */
+#  define SPI0_MISO GPIO11 /**< Non-default FSPI MISO */
 #endif
 #ifndef SPI0_MOSI
-#define SPI0_MOSI   GPIO27  /**< VSPI MOSI */
+#  define SPI0_MOSI GPIO10 /**< Non-default FSPI MOSI */
 #endif
 #ifndef SPI0_CS0
-#define SPI0_CS0    GPIO18  /**< VSPI CS0 */
+#  define SPI0_CS0 GPIO8 /**< Non-default FSPI CS */
 #endif
 /** @} */
 
 /**
  * @name   UART configuration
  *
- * ESP32 provides 3 UART interfaces at maximum:
+ * ESP32-S3 provides 3 UART interfaces at maximum:
  *
  * UART_DEV(0) uses fixed standard configuration.<br>
- * UART_DEV(1) is defined here.<br>
- * UART_DEV(2) is not used.<br>
+ * UART_DEV(1) is not used.<br>
  *
  * @{
  */
-#define UART0_TXD   GPIO1  /**< direct I/O pin for UART_DEV(0) TxD, can't be changed */
-#define UART0_RXD   GPIO3  /**< direct I/O pin for UART_DEV(0) RxD, can't be changed */
-
-#if CONFIG_FLASHMODE_DOUT || CONFIG_FLASHMODE_DIO || DOXYGEN
-#ifndef UART1_TXD
-#define UART1_TXD   GPIO10  /**< direct I/O pin for UART_DEV(1) TxD */
-#endif
-#ifndef UART1_RXD
-#define UART1_RXD   GPIO9   /**< direct I/O pin for UART_DEV(1) RxD */
-#endif
-#else
-#warning Configuration problem: Flash mode is qio or qout, \
-         GPIO9 and GPIO10 are not available for UART1 as configured
-#endif
-/** @} */
+#define UART0_TXD GPIO43 /**< direct I/O pin for UART_DEV(0) TxD, can't be changed */
+#define UART0_RXD GPIO44 /**< direct I/O pin for UART_DEV(0) RxD, can't be changed */
 
 #ifdef __cplusplus
 } /* end extern "C" */

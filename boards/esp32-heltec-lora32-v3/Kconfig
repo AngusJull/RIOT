@@ -2,12 +2,12 @@
 # SPDX-License-Identifier: LGPL-2.1-only
 
 config BOARD
-    default "esp32-heltec-lora32-v2" if BOARD_ESP32_HELTEC_LORA32_V2
+    default "esp32-heltec-lora32-v3" if BOARD_ESP32_HELTEC_LORA32_V3
 
-config BOARD_ESP32_HELTEC_LORA32_V2
+config BOARD_ESP32_HELTEC_LORA32_V3
     bool
     default y
-    select BOARD_COMMON_ESP32
-    select CPU_MODEL_ESP32_D0WD
+    select BOARD_COMMON_ESP32S3
+    select CPU_MODEL_ESP32S3
 
-source "$(RIOTBOARD)/common/esp32/Kconfig"
+source "$(RIOTBOARD)/common/esp32s3/Kconfig"
