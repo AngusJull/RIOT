@@ -1,31 +1,136 @@
 #include "net/ieee802154/radio.h"
 
+#include "bhp/event.h"
+#include "net/ieee802154/submac.h"
 #include "sx126x.h"
 #include <sx126x.h>
 
 #define ENABLE_DEBUG 0
 #include "debug.h"
 
-// Forward declaration
+typedef struct {
+    sx126x_t sx_dev; /** Device driver, used without netdev */
+    bhp_event_t bhp; /** Bottom half processor for IRQ events, since sx126x works over SPI */
+
+    // From PR for sx126x
+    bool cad_detected;                                /** Channel Activity Detected Flag */
+    bool cad_done;                                    /** Channel Activity Detection Done Flag */
+    bool ack_filter;                                  /** Whether the ACK filter is activated or not */
+    bool promisc;                                     /** Whether the device is in promiscuous mode or not */
+    bool pending;                                     /** Whether there pending bit should be set in the ACK frame or not */
+    uint8_t short_addr[IEEE802154_SHORT_ADDRESS_LEN]; /** Short (2 bytes) device address */
+    uint8_t long_addr[IEEE802154_LONG_ADDRESS_LEN];   /** Long (8 bytes) device address */
+    uint16_t pan_id;                                  /** PAN ID */
+} sx126x_hal_priv_t;
+
+// Helper for getting device driver from HAL structure
+#define SX_DEV(hal_dev) &(((sx126x_hal_priv_t *)(hal_dev)->priv)->sx_dev);
+
+// Forward declaration of HAL operations
 static const ieee802154_radio_ops_t sx126x_ops;
 
-void sx126x_hal_setup(sx126x_t *dev, ieee802154_dev_t *hal)
+// From PR for sx126x
+static bool _l2filter(ieee802154_dev_t *hal, uint8_t *mhr)
 {
+    sx126x_hal_priv_t *priv = hal->priv;
+    uint8_t dst_addr[IEEE802154_LONG_ADDRESS_LEN];
+    le_uint16_t dst_pan;
+    le_uint16_t pan_bcast = { .u8 = IEEE802154_PANID_BCAST };
+
+    int addr_len = ieee802154_get_dst(mhr, dst_addr, &dst_pan);
+
+    if ((mhr[0] & IEEE802154_FCF_TYPE_MASK) == IEEE802154_FCF_TYPE_BEACON) {
+        if (priv->pan_id == pan_bcast.u16) {
+            DEBUG("[sx126x hal] beacon address checked\n");
+            return true;
+        }
+    }
+
+    /* filter PAN ID */
+    /* Will only work on little endian platform (all?) */
+    if (pan_bcast.u16 != byteorder_ltohs(dst_pan) &&
+        priv->pan_id != byteorder_ltohs(dst_pan)) {
+        DEBUG("[sx126x hal] PAN ID mismatch\n");
+        return false;
+    }
+
+    /* check destination address */
+    if (addr_len == IEEE802154_SHORT_ADDRESS_LEN) {
+        if (memcmp(priv->short_addr, dst_addr, addr_len) == 0 ||
+            memcmp(ieee802154_addr_bcast, dst_addr, addr_len) == 0) {
+            return true;
+        }
+        else {
+            DEBUG("[sx126x hal] short address mismatch\n");
+            return false;
+        }
+    }
+    else if (addr_len == IEEE802154_LONG_ADDRESS_LEN) {
+        if (memcmp(priv->long_addr, dst_addr, addr_len) == 0) {
+            return true;
+        }
+        else {
+            return false;
+        }
+    }
+
+    return false;
+}
+
+static void _dio1_isr(void *arg)
+{
+    // Pass along arg, which should be a pointer to the bhp
+    bhp_event_isr_cb(arg);
+}
+
+static void _event_isr_cb(void *arg)
+{
+    ieee802154_dev_t *hal = arg;
+    sx126x_t *sx_dev = SX_DEV(hal);
+
+    sx126x_irq_mask_t mask;
+    sx126x_get_and_clear_irq_status(sx_dev, &mask);
+    // Do something with the IRQ here
+}
+
+void sx126x_hal_setup(sx126x_hal_priv_t *dev, sx126x_params_t *params, event_queue_t *evq, ieee802154_dev_t *hal)
+{
+    // TODO - augment with frame filters and modes
     hal->driver = &sx126x_ops;
-    // Use the sx126x information, but will need different _send, etc. ops
     hal->priv = dev;
+    // Don't use sx126x_setup to set params and such because it registers with netdev
+    dev->sx_dev.params = params;
+
+    sx126x_t *sx_dev = &dev->sx_dev;
+
+    // Use the sx126x setup, but don't set up the netdev by avoiding the sx126x_setup function. This configures the
+    // interrupt handler which we should also change
+    if (sx126x_init(sx_dev) < 0) {
+        DEBUG("[sx126x hal] init failed\n");
+        return;
+    }
+
+    // Init the event queue that will be used for interrutpts. Event queue should come from netif for 802.15.4
+    // Use &_netif[i].evq[GNRC_NETIF_EVQ_INDEX_PRIO_HIGH] in the registration ideally
+    bhp_event_init(&dev->bhp, evq, _event_isr_cb, hal);
+
+    // Override the default pin isr by clearing the interrupt pin, then setting it
+    int res = gpio_init_int(sx_dev->params->dio1_pin, GPIO_IN, GPIO_RISING, _dio1_isr, &dev->bhp);
+    if (res < 0) {
+        DEBUG("[sx126x hal] interrupt setup failed\n");
+        return;
+    }
 }
 
 static int _write(ieee802154_dev_t *dev, const iolist_t *psdu)
 {
-    sx126x_t *sx_dev = dev->priv;
+    sx126x_t *sx_dev = SX_DEV(dev);
 
-    // Check we're not already transmitting
-    netopt_state_t state;
-    sx_dev->netdev->driver->get(netdev, NETOPT_STATE, &state, sizeof(uint8_t));
-    if (state == NETOPT_STATE_TX) {
-        DEBUG("[sx126x] ieee hal: cannot send packet, radio is already transmitting.\n");
-        return -ENOTSUP;
+    sx126x_chip_status_t status;
+    sx126x_get_status(sx_dev, &status);
+    if (status.chip_mode == SX126X_CHIP_MODE_TX) {
+        DEBUG("[sx126x hal] cannot send packet, radio is already transmitting.\n");
+        return -EBUSY;
     }
 
     size_t pos = 0;
@@ -34,7 +139,7 @@ static int _write(ieee802154_dev_t *dev, const iolist_t *psdu)
     for (const iolist_t *iol = psdu; iol; iol = iol->iol_next) {
         if (iol->iol_len > 0) {
             sx126x_write_buffer(sx_dev, pos, iol->iol_base, iol->iol_len);
-            DEBUG("[sx126x] ieee hal: send: wrote data to payload buffer.\n");
+            DEBUG("[sx126x hal]  wrote data to payload buffer.\n");
             pos += iol->iol_len;
         }
     }
@@ -45,7 +150,7 @@ static int _write(ieee802154_dev_t *dev, const iolist_t *psdu)
 
 static int _len(ieee802154_dev_t *dev)
 {
-    DEBUG("[sx126x] ieee hal: checking length of recieved pkt");
+    DEBUG("[sx126x hal]  checking length of recieved pkt");
     sx126x_t *sx_dev = dev->priv;
 
     sx126x_rx_buffer_status_t rx_buffer_status;
@@ -58,7 +163,7 @@ static int _len(ieee802154_dev_t *dev)
 
 static int _read(ieee802154_dev_t *dev, void *buf, size_t size, ieee802154_rx_info_t *info)
 {
-    DEBUG("[sx126x ieee hal: reading recieved packet");
+    DEBUG("[sx126x hal] reading recieved packet");
     sx126x_t *sx_dev = dev->priv;
 
     if (buf == NULL) {
@@ -91,7 +196,7 @@ static int _read(ieee802154_dev_t *dev, void *buf, size_t size, ieee802154_rx_in
 static int _off(ieee802154_dev_t *dev)
 {
     // Ignore turning off for now
-    DEBUG("[sx126x] ieee hal:  would turn off, but ignoring\n");
+    DEBUG("[sx126x hal] would turn off, but ignoring\n");
     (void)dev;
     return 0;
 }
@@ -99,7 +204,7 @@ static int _off(ieee802154_dev_t *dev)
 static int _request_on(ieee802154_dev_t *dev)
 {
     // Assume that the sx126x driver will turn it on
-    DEBUG("[sx126x] ieee hal: would turn on, but ignoring\n");
+    DEBUG("[sx126x hal]  would turn on, but ignoring\n");
     (void)dev;
     return 0;
 }
@@ -107,7 +212,7 @@ static int _request_on(ieee802154_dev_t *dev)
 static int _confirm_on(ieee802154_dev_t *dev)
 {
     // Assume that the device is always on
-    DEBUG("[sx126x] ieee hal: would confirm on, but ignoring\n");
+    DEBUG("[sx126x hal] would confirm on, but ignoring\n");
     (void)dev;
     return 0;
 }
@@ -120,27 +225,27 @@ static int _request_op(ieee802154_dev_t *dev, ieee802154_hal_op_t op, void *ctx)
     int res = -EBUSY;
     switch (op) {
     case IEEE802154_HAL_OP_TRANSMIT:
-        DEBUG("[sx126x] ieee hal: starting transmit\n");
+        DEBUG("[sx126x hal] starting transmit\n");
         // May need to consider retransmission here
         // No timeout
         sx126x_set_tx(sx_dev, 0);
         break;
     case IEEE802154_HAL_OP_SET_IDLE:
-        DEBUG("[sx126x] ieee hal: going to idle\n");
+        DEBUG("[sx126x hal] going to idle\n");
         // Might just want to do nothing here. Check if we need to stop RX or TX?
         // Assuming this mode just means to cancel tx and rx operations
         sx126x_set_standby(sx_dev, SX126X_CHIP_MODE_STBY_XOSC);
         // TODO - check ctx as boolean for "forced" where we only go to standby if not doing nothing
         break;
     case IEEE802154_HAL_OP_SET_RX:
-        DEBUG("[sx126x] ieee hal: starting reception\n");
+        DEBUG("[sx126x hal] starting reception\n");
         // Go to idle when we're done, maybe should just leave this to setup
         sx126x_set_rx_tx_fallback_mode(sx_dev, SX126X_FALLBACK_STDBY_XOSC);
         // Might want to check if we want SINGLE or COTINUOUS mode
         sx126x_set_rx(sx_dev, SX126X_RX_SINGLE_MODE);
         break;
     case IEEE802154_HAL_OP_CCA:
-        DEBUG("[sx126x] ieee hal: would start CCA, doing nothing\n");
+        DEBUG("[sx126x hal] would start CCA, doing nothing\n");
         /* Do channel detection operation. Likely, just need to do set_cad_params,
          * then do set_cad, and configure an IRQ handler for when its done.
          *
@@ -235,6 +340,7 @@ static int _set_csma_params(ieee802154_dev_t *dev, const ieee802154_csma_be_t *b
 
 static int _set_frame_filter_mode(ieee802154_dev_t *dev, ieee802154_filter_mode_t mode)
 {
+    (void)dev;
     // Only need to implement one of these cases
     switch (mode) {
     case IEEE802154_FILTER_ACCEPT:
@@ -254,13 +360,16 @@ static int _set_frame_filter_mode(ieee802154_dev_t *dev, ieee802154_filter_mode_
 
 static int _get_frame_filter_mode(ieee802154_dev_t *dev, ieee802154_filter_mode_t *mode)
 {
+    (void)dev;
     *mode = IEEE802154_FILTER_ACCEPT;
     return -ENOTSUP;
 }
 
 static int _config_addr_filter(ieee802154_dev_t *dev, ieee802154_af_cmd_t cmd, const void *value)
 {
-    DEBUG("[sx126x] ieee hal: Configuring address filter.\n");
+    (void)dev;
+    (void)value;
+    DEBUG("[sx126x hal] Configuring address filter.\n");
     switch (cmd) {
     case IEEE802154_AF_SHORT_ADDR:
         // Will be 2 bytes with the short address

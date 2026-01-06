@@ -1,5 +1,7 @@
 USEMODULE += iolist
 USEMODULE += netdev_legacy_api
+# For bhp processing of interrupts in IEEE HAL
+USEMODULE += bhp_event
 USEPKG += driver_sx126x
 FEATURES_REQUIRED += periph_gpio_irq
 
