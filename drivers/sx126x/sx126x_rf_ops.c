@@ -1,33 +1,16 @@
-#include "net/ieee802154/radio.h"
-
-#include "bhp/event.h"
-#include "net/ieee802154/submac.h"
+#include "sx126x_rf_ops.h"
 #include "sx126x.h"
-#include <sx126x.h>
 
-#define ENABLE_DEBUG 0
+#define ENABLE_DEBUG 1
 #include "debug.h"
 
-typedef struct {
-    sx126x_t sx_dev; /** Device driver, used without netdev */
-    bhp_event_t bhp; /** Bottom half processor for IRQ events, since sx126x works over SPI */
-
-    // From PR for sx126x
-    bool cad_detected;                                /** Channel Activity Detected Flag */
-    bool cad_done;                                    /** Channel Activity Detection Done Flag */
-    bool ack_filter;                                  /** Whether the ACK filter is activated or not */
-    bool promisc;                                     /** Whether the device is in promiscuous mode or not */
-    bool pending;                                     /** Whether there pending bit should be set in the ACK frame or not */
-    uint8_t short_addr[IEEE802154_SHORT_ADDRESS_LEN]; /** Short (2 bytes) device address */
-    uint8_t long_addr[IEEE802154_LONG_ADDRESS_LEN];   /** Long (8 bytes) device address */
-    uint16_t pan_id;                                  /** PAN ID */
-} sx126x_hal_priv_t;
+#if IS_USED(MODULE_SX126X_IEEE802154)
 
 // Helper for getting device driver from HAL structure
-#define SX_DEV(hal_dev)   &(((sx126x_hal_priv_t *)(hal_dev)->priv)->sx_dev)
+#  define SX_DEV(hal_dev)   (((sx126x_hal_priv_t *)(hal_dev)->priv)->sx_dev)
 
 // Helper for getting the private data pointer from HAL structure
-#define HAL_PRIV(hal_dev) ((sx126x_hal_priv_t *)(hal_dev)->priv)
+#  define HAL_PRIV(hal_dev) ((sx126x_hal_priv_t *)(hal_dev)->priv)
 
 // Forward declaration of HAL operations
 static const ieee802154_radio_ops_t sx126x_ops;
@@ -156,8 +139,6 @@ static void _event_isr_cb(void *arg)
         DEBUG("[sx126x hal] SX126X_IRQ_CAD_DONE\n");
         priv->cad_done = true;
         hal->cb(hal, IEEE802154_RADIO_CONFIRM_CCA);
-        // TODO: should we go to RX here? What if we need to transmit right away?
-        // sx126x_set_rx(sx_dev, SX126X_RX_SINGLE_MODE);
     }
     else if (mask & SX126X_IRQ_TIMEOUT) {
         DEBUG("[sx126x hal] SX126X_IRQ_TIMEOUT\n");
@@ -167,15 +148,14 @@ static void _event_isr_cb(void *arg)
     }
 }
 
-void sx126x_hal_setup(sx126x_hal_priv_t *dev, sx126x_params_t *params, event_queue_t *evq, ieee802154_dev_t *hal)
+void sx126x_hal_setup(sx126x_hal_priv_t *dev, sx126x_t *sx_dev, const sx126x_params_t *params, event_queue_t *evq, ieee802154_dev_t *hal)
 {
-    // TODO - augment with frame filters and modes
     hal->driver = &sx126x_ops;
     hal->priv = dev;
-    // Don't use sx126x_setup to set params and such because it registers with netdev
-    dev->sx_dev.params = params;
 
-    sx126x_t *sx_dev = &dev->sx_dev;
+    // Don't use sx126x_setup to set params and such because it registers with netdev
+    sx_dev->params = (sx126x_params_t *)params;
+    dev->sx_dev = sx_dev;
 
     // Use the sx126x setup, but don't set up the netdev by avoiding the sx126x_setup function. This configures the
     // interrupt handler which we should also change
@@ -236,13 +216,12 @@ static int _len(ieee802154_dev_t *dev)
     sx126x_rx_buffer_status_t rx_buffer_status;
     sx126x_get_rx_buffer_status(sx_dev, &rx_buffer_status);
 
-    // TODO - Might want to check status in the future to make sure completed properly
+    // Might want to check status in the future to make sure completed properly
     return rx_buffer_status.pld_len_in_bytes - (uint8_t)IEEE802154_FCS_LEN;
 }
 
 static int _read(ieee802154_dev_t *dev, void *buf, size_t size, ieee802154_rx_info_t *info)
 {
-    // TODO - update to cut out FCS that we recieve. Also need to check if the HAL adds the FCS itself
     DEBUG("[sx126x hal] reading recieved packet");
     sx126x_t *sx_dev = SX_DEV(dev);
 
@@ -268,7 +247,7 @@ static int _read(ieee802154_dev_t *dev, void *buf, size_t size, ieee802154_rx_in
     if (read_size > size) {
         return -ENOBUFS;
     }
-    sx126x_read_buffer(sx_dev, rx_buffer_status.buffer_start_pointer, buf, size);
+    sx126x_read_buffer(sx_dev, rx_buffer_status.buffer_start_pointer, buf, read_size);
 
     return read_size;
 }
@@ -308,17 +287,11 @@ static int _request_op(ieee802154_dev_t *dev, ieee802154_hal_op_t op, void *ctx)
     switch (op) {
     case IEEE802154_HAL_OP_TRANSMIT:
         DEBUG("[sx126x hal] starting transmit\n");
-        // TODO: figure out why pending flag is here
-        // TODO: determine if CAD is required again before transmit
-        priv->pending = false;
         sx126x_set_tx(sx_dev, 0);
         break;
     case IEEE802154_HAL_OP_SET_IDLE:
         DEBUG("[sx126x hal] going to idle\n");
-        // Might just want to do nothing here. Check if we need to stop RX or TX?
-        // Assuming this mode just means to cancel tx and rx operations
         sx126x_set_standby(sx_dev, SX126X_CHIP_MODE_STBY_XOSC);
-        // TODO: check ctx as boolean for "forced" where we only go to standby if not doing nothing
         break;
     case IEEE802154_HAL_OP_SET_RX:
         DEBUG("[sx126x hal] starting reception\n");
@@ -329,7 +302,6 @@ static int _request_op(ieee802154_dev_t *dev, ieee802154_hal_op_t op, void *ctx)
     case IEEE802154_HAL_OP_CCA:
         DEBUG("[sx126x hal] starting CCA\n");
         priv->cad_detected = false;
-        // TODO: determine if CAD done flag needs to be set here
         priv->cad_done = false;
         sx126x_set_cad(sx_dev);
         break;
@@ -351,17 +323,14 @@ static int _confirm_op(ieee802154_dev_t *dev, ieee802154_hal_op_t op, void *ctx)
         // Provie an error if not completed
         sx126x_chip_status_t status;
         sx126x_get_status(sx_dev, &status);
-
-        if (status.chip_mode != SX126X_CHIP_MODE_TX) {
+        if (status.chip_mode == SX126X_CHIP_MODE_TX) {
             goto error;
         }
 
         if (ctx) {
             ieee802154_tx_info_t *info = ctx;
-
-            // TODO: If retrying, return status TX_STATUS_MEDIUM_BUSY
-            // TODO: Need to handle other statuses, like if we fail to retransmit or wait for ACK
-            // Note - without cap for AUTO_CSMA, no guarantee is made that the chip does any CSMA before transmitting. Likely can leave as is
+            // Note - without cap for AUTO_CSMA, no guarantee is made that the chip does any CSMA before transmitting
+            // Just assume that the upper layer will take care of retransmit and other errors
             info->status = TX_STATUS_SUCCESS;
         }
     } break;
@@ -383,6 +352,7 @@ static int _confirm_op(ieee802154_dev_t *dev, ieee802154_hal_op_t op, void *ctx)
         }
         else {
             *((bool *)ctx) = priv->cad_detected;
+            // Leave cad_done as true in this case so that we need to start the operation again to get stuck polling
         }
         break;
     }
@@ -535,3 +505,5 @@ static const ieee802154_radio_ops_t sx126x_ops = {
     .config_addr_filter = _config_addr_filter,
     .config_src_addr_match = _config_src_addr_match,
 };
+
+#endif // IS_USED(MODULE_SX126X_IEEE802154)
