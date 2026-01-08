@@ -34,13 +34,8 @@ USEMODULE += ps
 # include and auto-initialize all available sensors
 USEMODULE += saul_default
 
-# Use IEEE802154 for sx126x instead of LoRa or RAW modes
-USEMODULE += sx126x_ieee802154
-
-# Use a network interface, if available. The handling is done in
-# Makefile.board.dep, which is processed recursively as part of the dependency
-# resolution.
-FEATURES_OPTIONAL += netif
+# netif is required for this application (though should still work if optional)
+FEATURES_REQUIRED += netif
 
 FEATURES_OPTIONAL += periph_rtc
 

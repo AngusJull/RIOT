@@ -8,3 +8,5 @@ FEATURES_PROVIDED += periph_adc
 FEATURES_PROVIDED += periph_i2c
 FEATURES_PROVIDED += periph_pwm
 FEATURES_PROVIDED += periph_spi
+# board has a radio, besides esp32 already providing a netif
+FEATURES_PROVIDED += netif

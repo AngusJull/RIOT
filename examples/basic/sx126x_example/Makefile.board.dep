@@ -10,6 +10,8 @@ ifneq (,$(filter netif,$(FEATURES_USED)))
   USEMODULE += gnrc_txtsnd
   # the application dumps received packets to stdout
   USEMODULE += gnrc_pktdump
+  # Use IEEE802154 for sx126x instead of LoRa or RAW modes
+  USEMODULE += sx126x_ieee802154
 
   # We use only the lower layers of the GNRC network stack, hence, we can
   # reduce the size of the packet buffer a bit

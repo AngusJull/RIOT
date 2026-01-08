@@ -1,5 +1,5 @@
-#include "sx126x_rf_ops.h"
 #include "sx126x.h"
+#include "sx126x_rf_ops.h"
 
 #define ENABLE_DEBUG 1
 #include "debug.h"
