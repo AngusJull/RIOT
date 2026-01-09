@@ -1,4 +1,5 @@
 #include "sx126x.h"
+#include <sx126x.h>
 #include "sx126x_rf_ops.h"
 
 #define ENABLE_DEBUG 1
@@ -66,6 +67,7 @@ static bool _l2filter(ieee802154_dev_t *hal, uint8_t *mhr)
 static void _dio1_isr(void *arg)
 {
     // Pass along arg, which should be a pointer to the bhp
+    DEBUG("[sx126x hal] isr triggered, adding event\n");
     bhp_event_isr_cb(arg);
 }
 
@@ -148,6 +150,34 @@ static void _event_isr_cb(void *arg)
     }
 }
 
+void sx126x_print_status(sx126x_t *dev)
+{
+    sx126x_errors_mask_t errors;
+    if (sx126x_get_device_errors(dev, &errors) != SX126X_STATUS_OK) {
+        DEBUG("[sx126x hal] get device errors failed\n");
+    }
+    else {
+        DEBUG("[sx126x hal] get errors: %x\n", errors);
+    }
+
+    sx126x_chip_status_t status;
+    if (sx126x_get_status(dev, &status) != SX126X_STATUS_OK) {
+        DEBUG("[sx126x hal] get status failed\n");
+    }
+    else {
+        DEBUG("[sx126x hal] chip mode: %d\n", status.chip_mode);
+        DEBUG("[sx126x hal] cmd status: %d\n", status.cmd_status);
+    }
+    DEBUG("[sx126x hal] get channel: %" PRIu32 "\n", sx126x_get_channel(dev));
+    sx126x_pkt_type_t pkt_type = 0;
+    if (sx126x_get_pkt_type(dev, &pkt_type) != SX126X_STATUS_OK) {
+        DEBUG("[sx126x hal] get pkt type failed\n");
+    }
+    else {
+        DEBUG("[sx126x hal] get pkt type: %u\n", pkt_type);
+    }
+}
+
 void sx126x_hal_setup(sx126x_hal_priv_t *dev, sx126x_t *sx_dev, const sx126x_params_t *params, event_queue_t *evq, ieee802154_dev_t *hal)
 {
     hal->driver = &sx126x_ops;
@@ -164,8 +194,6 @@ void sx126x_hal_setup(sx126x_hal_priv_t *dev, sx126x_t *sx_dev, const sx126x_par
         return;
     }
 
-    // Init the event queue that will be used for interrutpts. Event queue should come from netif for 802.15.4
-    // Use &_netif[i].evq[GNRC_NETIF_EVQ_INDEX_PRIO_HIGH] in the registration ideally
     bhp_event_init(&dev->bhp, evq, _event_isr_cb, hal);
 
     // Override the pin isr set by sx126x_init
@@ -174,6 +202,10 @@ void sx126x_hal_setup(sx126x_hal_priv_t *dev, sx126x_t *sx_dev, const sx126x_par
         DEBUG("[sx126x hal] interrupt setup failed\n");
         return;
     }
+
+    // Debug info in case there's errors during setup
+    sx126x_clear_device_errors(sx_dev);
+    sx126x_print_status(sx_dev);
 }
 
 static int _write(ieee802154_dev_t *dev, const iolist_t *psdu)
@@ -320,6 +352,7 @@ static int _confirm_op(ieee802154_dev_t *dev, ieee802154_hal_op_t op, void *ctx)
     int res = -EAGAIN;
     switch (op) {
     case IEEE802154_HAL_OP_TRANSMIT: {
+        DEBUG("[sx126x hal] confirming transmit\n");
         // Provie an error if not completed
         sx126x_chip_status_t status;
         sx126x_get_status(sx_dev, &status);
@@ -335,18 +368,19 @@ static int _confirm_op(ieee802154_dev_t *dev, ieee802154_hal_op_t op, void *ctx)
         }
     } break;
     case IEEE802154_HAL_OP_SET_IDLE: {
+        DEBUG("[sx126x hal] confirming set idle\n");
         sx126x_chip_status_t status;
         sx126x_get_status(sx_dev, &status);
-
-        // Could also just do nothing?
-        if (status.chip_mode != SX126X_CHIP_MODE_STBY_XOSC) {
+        if (status.chip_mode != SX126X_CHIP_MODE_STBY_XOSC && status.chip_mode != SX126X_CHIP_MODE_STBY_RC) {
             goto error;
         }
     } break;
     case IEEE802154_HAL_OP_SET_RX:
+        DEBUG("[sx126x hal] confirming recv\n");
         // Might have received since turning on RX, which would put us back in idle. Just do nothing
         break;
     case IEEE802154_HAL_OP_CCA:
+        DEBUG("[sx126x hal] checking cca done\n");
         if (!priv->cad_done) {
             goto error;
         }
@@ -484,9 +518,13 @@ static int _config_src_addr_match(ieee802154_dev_t *dev, ieee802154_src_match_t 
 
 static const ieee802154_radio_ops_t sx126x_ops = {
     // Some of these capabilities might not be entirely accurate, but should provide needed functionality
-    .caps = IEEE802154_CAP_SUB_GHZ | IEEE802154_CAP_IRQ_TX_DONE | IEEE802154_CAP_IRQ_CCA_DONE |
+    // Add the FSK capability, which is only half wrong because although the radio has FSK, we won't use it
+    .caps = IEEE802154_CAP_SUB_GHZ |
+            IEEE802154_CAP_IRQ_TX_DONE |
+            IEEE802154_CAP_IRQ_CCA_DONE |
             IEEE802154_CAP_IRQ_RX_START |
-            IEEE802154_CAP_IRQ_CRC_ERROR,
+            IEEE802154_CAP_IRQ_CRC_ERROR |
+            IEEE802154_CAP_PHY_MR_FSK,
     .write = _write,
     .len = _len,
     .read = _read,
