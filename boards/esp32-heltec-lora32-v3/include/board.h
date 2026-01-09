@@ -63,7 +63,7 @@
  *
  * May want to try removing to see if necessary
  */
-#define BUTTON0_PIN          BTN0_PIN
+#define BUTTON0_PIN            BTN0_PIN
 
 /** @} */
 
@@ -72,8 +72,8 @@
  *
  * @{
  */
-#define LED0_PIN             GPIO35
-#define LED0_ACTIVE          (1) /**< LED is high active */
+#define LED0_PIN               GPIO35
+#define LED0_ACTIVE            (1) /**< LED is high active */
 
 /** @} */
 
@@ -83,11 +83,12 @@
  * SX126X configuration.
  * @{
  */
-#define SX126X_PARAM_SPI     (SPI_DEV(0))
-#define SX126X_PARAM_SPI_NSS GPIO8
-#define SX126X_PARAM_RESET   GPIO12
-#define SX126X_PARAM_BUSY    GPIO13
-#define SX126X_PARAM_DIO0    GPIO14
+#define SX126X_PARAM_SPI       (SPI_DEV(0))
+#define SX126X_PARAM_SPI_NSS   GPIO8
+#define SX126X_PARAM_RESET     GPIO12
+#define SX126X_PARAM_BUSY      GPIO13
+#define SX126X_PARAM_DIO1      GPIO14
+#define SX126X_PARAM_DIO3_MODE SX126X_DIO3_TCXO
 /** @} */
 
 /* include common board definitions as last step */

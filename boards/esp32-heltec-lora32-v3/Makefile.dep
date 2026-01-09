@@ -1,5 +1,7 @@
 ifneq (,$(filter netdev_default,$(USEMODULE)))
   USEMODULE += sx1262
+  # DIO3 is used as TXCO, so this module required
+  USEMODULE += sx126x_dio3
 endif
 
 ifneq (,$(filter saul_default,$(USEMODULE)))
