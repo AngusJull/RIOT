@@ -235,6 +235,9 @@ static int _write(ieee802154_dev_t *dev, const iolist_t *psdu)
         return 0;
     }
 
+    // Other chips would probably include a CRC, but the sx126x includes one as part of the PHY frame
+    // leave out to save space, but would need to add back into make interoperable
+
     sx126x_set_lora_payload_length(sx_dev, pos);
     // Leave actually setting to TX mode for a different operation
     return 0;
@@ -242,19 +245,19 @@ static int _write(ieee802154_dev_t *dev, const iolist_t *psdu)
 
 static int _len(ieee802154_dev_t *dev)
 {
-    DEBUG("[sx126x hal]  checking length of recieved pkt");
+    DEBUG("[sx126x hal]  checking length of recieved pkt\n");
     sx126x_t *sx_dev = SX_DEV(dev);
 
     sx126x_rx_buffer_status_t rx_buffer_status;
     sx126x_get_rx_buffer_status(sx_dev, &rx_buffer_status);
 
     // Might want to check status in the future to make sure completed properly
-    return rx_buffer_status.pld_len_in_bytes - (uint8_t)IEEE802154_FCS_LEN;
+    return rx_buffer_status.pld_len_in_bytes;
 }
 
 static int _read(ieee802154_dev_t *dev, void *buf, size_t size, ieee802154_rx_info_t *info)
 {
-    DEBUG("[sx126x hal] reading recieved packet");
+    DEBUG("[sx126x hal] reading recieved packet\n");
     sx126x_t *sx_dev = SX_DEV(dev);
 
     if (buf == NULL) {
@@ -273,8 +276,7 @@ static int _read(ieee802154_dev_t *dev, void *buf, size_t size, ieee802154_rx_in
     // Duplicate of _len, but need the start pointer for later
     sx126x_rx_buffer_status_t rx_buffer_status;
     sx126x_get_rx_buffer_status(sx_dev, &rx_buffer_status);
-    // Don't want to copy out FCS, or include in size calculation
-    uint8_t read_size = rx_buffer_status.pld_len_in_bytes - IEEE802154_FCS_LEN;
+    uint8_t read_size = rx_buffer_status.pld_len_in_bytes;
 
     if (read_size > size) {
         return -ENOBUFS;
