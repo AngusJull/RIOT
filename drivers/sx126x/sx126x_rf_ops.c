@@ -67,7 +67,6 @@ static bool _l2filter(ieee802154_dev_t *hal, uint8_t *mhr)
 static void _dio1_isr(void *arg)
 {
     // Pass along arg, which should be a pointer to the bhp
-    DEBUG("[sx126x hal] isr triggered, adding event\n");
     bhp_event_isr_cb(arg);
 }
 
@@ -215,7 +214,7 @@ static int _write(ieee802154_dev_t *dev, const iolist_t *psdu)
     sx126x_chip_status_t status;
     sx126x_get_status(sx_dev, &status);
     if (status.chip_mode == SX126X_CHIP_MODE_TX) {
-        DEBUG("[sx126x hal] cannot send packet, radio is already transmitting.\n");
+        DEBUG("[sx126x hal] cannot send packet, radio is already transmitting\n");
         return -EBUSY;
     }
 
@@ -226,7 +225,6 @@ static int _write(ieee802154_dev_t *dev, const iolist_t *psdu)
     for (const iolist_t *iol = psdu; iol; iol = iol->iol_next) {
         if (iol->iol_len > 0) {
             sx126x_write_buffer(sx_dev, pos, iol->iol_base, iol->iol_len);
-            DEBUG("[sx126x hal]  wrote data to payload buffer.\n");
             pos += iol->iol_len;
         }
     }
@@ -234,6 +232,7 @@ static int _write(ieee802154_dev_t *dev, const iolist_t *psdu)
     if (!pos) {
         return 0;
     }
+    DEBUG("[sx126x hal] wrote data to payload buffer.\n");
 
     // Other chips would probably include a CRC, but the sx126x includes one as part of the PHY frame
     // leave out to save space, but would need to add back into make interoperable
@@ -245,7 +244,7 @@ static int _write(ieee802154_dev_t *dev, const iolist_t *psdu)
 
 static int _len(ieee802154_dev_t *dev)
 {
-    DEBUG("[sx126x hal]  checking length of recieved pkt\n");
+    DEBUG("[sx126x hal] checking length of recieved pkt\n");
     sx126x_t *sx_dev = SX_DEV(dev);
 
     sx126x_rx_buffer_status_t rx_buffer_status;
@@ -297,7 +296,7 @@ static int _off(ieee802154_dev_t *dev)
 static int _request_on(ieee802154_dev_t *dev)
 {
     // Assume that the sx126x driver will turn it on
-    DEBUG("[sx126x hal]  would turn on, but ignoring\n");
+    DEBUG("[sx126x hal] would turn on, but ignoring\n");
     (void)dev;
     return 0;
 }

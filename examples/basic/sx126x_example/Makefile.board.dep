@@ -6,6 +6,8 @@ ifneq (,$(filter netif,$(FEATURES_USED)))
   USEMODULE += netdev_default
 	# auto init networking modules
   USEMODULE += auto_init_gnrc_netif
+  # enable ipv6 networking stack, which automatically includes sixlowpan if a IEEE 802.15.4 device present
+  USEMODULE += gnrc_ipv6_router
   # shell command to send L2 packets with a simple string
   USEMODULE += gnrc_txtsnd
   # the application dumps received packets to stdout
