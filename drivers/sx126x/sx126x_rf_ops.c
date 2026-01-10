@@ -2,7 +2,7 @@
 #include <sx126x.h>
 #include "sx126x_rf_ops.h"
 
-#define ENABLE_DEBUG 1
+#define ENABLE_DEBUG 0
 #include "debug.h"
 
 #if IS_USED(MODULE_SX126X_IEEE802154)
