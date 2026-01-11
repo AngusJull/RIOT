@@ -48,6 +48,11 @@ USEMODULE += netdev_default
 USEMODULE += auto_init_gnrc_netif
 # enable ipv6 networking stack, which automatically includes sixlowpan if a IEEE 802.15.4 device present
 USEMODULE += gnrc_ipv6_router_default
+# enable RPL routing protocol
+USEMODULE += gnrc_rpl
+USEMODULE += auto_init_gnrc_rpl
+# enable RPL source routing header support
+USEMODULE += gnrc_rpl_srh
 # shell command to send L2 packets with a simple string
 USEMODULE += gnrc_txtsnd
 # the application dumps received packets to stdout
@@ -58,6 +63,11 @@ USEMODULE += gnrc_udp
 USEMODULE += shell_cmd_gnrc_udp
 # include shell program for inspecting and modifying forwarding information base
 USEMODULE += fib
+# include RPL shell commands
+USEMODULE += shell_cmd_gnrc_rpl
+# include ICMPv6 echo functionality and command
+USEMODULE += gnrc_icmpv6_echo
+USEMODULE += shell_cmd_gnrc_icmpv6_echo
 # icmpv6 error message support
 USEMODULE += gnrc_icmpv6_error
 
@@ -72,7 +82,7 @@ USEMODULE += sx126x_ieee802154
 # reduce the size of the packet buffer a bit
 # Set GNRC_PKTBUF_SIZE via CFLAGS if not being set via Kconfig.
 ifndef CONFIG_GNRC_PKTBUF_SIZE
-	CFLAGS += -DCONFIG_GNRC_PKTBUF_SIZE=512
+	CFLAGS += -DCONFIG_GNRC_PKTBUF_SIZE=1024
 endif
 
 include $(RIOTBASE)/Makefile.include
