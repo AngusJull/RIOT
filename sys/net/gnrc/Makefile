@@ -139,5 +139,8 @@ endif
 ifneq (,$(filter gnrc_tx_sync,$(USEMODULE)))
   DIRS += tx_sync
 endif
+ifneq (,$(filter gnrc_srv6_srh,$(USEMODULE)))
+  DIRS += routing/srv6/srh
+endif
 
 include $(RIOTBASE)/Makefile.base

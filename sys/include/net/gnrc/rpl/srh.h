@@ -37,7 +37,7 @@ extern "C" {
  *          RFC 6554
  *      </a>
  *
- * @extends ipv6_ext_rh_t
+ * @extends gnrc_ipv6_ext_rh_t
  */
 typedef struct __attribute__((packed)) {
     uint8_t nh;         /**< next header */

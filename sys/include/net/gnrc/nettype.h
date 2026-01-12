@@ -269,6 +269,10 @@ static inline uint8_t gnrc_nettype_to_protnum(gnrc_nettype_t type)
         case GNRC_NETTYPE_IPV6:
             return PROTNUM_IPV6;
 #endif
+#if IS_USED(MODULE_GNRC_NETTYPE_IPV6_EXT)
+        case GNRC_NETTYPE_IPV6_EXT:
+            return PROTNUM_IPV6_EXT_RH;
+#endif
 #if IS_USED(MODULE_GNRC_NETTYPE_ICMPV6)
         case GNRC_NETTYPE_ICMPV6:
             return PROTNUM_ICMPV6;

@@ -1,4 +1,5 @@
 /*
+ * Copyright (C) 2015 Cenk Gündoğan <cnkgndgn@gmail.com>
  * Copyright (C) 2018 Freie Universität Berlin
  *
  * This file is subject to the terms and conditions of the GNU Lesser
@@ -9,57 +10,86 @@
 #pragma once
 
 /**
- * @defgroup    net_gnrc_ipv6_ext_rh Support for IPv6 routing header extension
- * @ingroup     net_gnrc_ipv6_ext
- * @brief       GNRC implementation of IPv6 routing header extension.
+ * @defgroup    net_ipv6_ext_rh IPv6 routing header extension
+ * @ingroup     net_ipv6_ext 
+ * @brief       Definitions for IPv6 routing header extension.
  * @{
  *
  * @file
- * @brief   GNRC routing extension header definitions.
+ * @brief   Routing extension header definitions.
  *
+ * @author  Cenk Gündoğan <cnkgndgn@gmail.com>
  * @author  Martine Lenders <m.lenders@fu-berlin.de>
  */
 
-#include "net/gnrc/pkt.h"
+#include <stdint.h>
+#include "net/gnrc/pktbuf.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-enum {
-    /**
-     * @brief   An error occurred during routing header processing
-     */
-    GNRC_IPV6_EXT_RH_ERROR = 0,
-    /**
-     * @brief   The routing header was successfully processed and this node
-     *          is the destination (i.e. ipv6_ext_rh_t::seg_left == 0)
-     */
-    GNRC_IPV6_EXT_RH_AT_DST,
-    /**
-     * @brief   The routing header was successfully processed and the packet
-     *          was forwarded to another node or should be forwarded to another
-     *          node.
-     *
-     * When @ref gnrc_ipv6_ext_rh_process() returns this value, the packet was
-     * already forwarded to another node. Implementations for specific routing
-     * header types should leave the forwarding to the calling @ref
-     * gnrc_ipv6_ext_rh_process() and should return @ref
-     * GNRC_IPV6_EXT_RH_FORWARDED if they want the packet to be forwarded. They
-     * should however set ipv6_hdr_t::dst accordingly.
-     */
-    GNRC_IPV6_EXT_RH_FORWARDED,
-};
+/**
+ * @name Routing header types
+ * @see [IANA, IPv6 parameters](https://www.iana.org/assignments/ipv6-parameters/ipv6-parameters.xhtml#ipv6-parameters-3)
+ * @{
+ */
+/**
+ * @brief   Type 0 routing header (deprecated)
+ */
+#define IPV6_EXT_RH_TYPE_0          (0U)
 
 /**
- * @brief   Process the routing header of an IPv6 packet.
+ * @brief   Nimrod routing header (deprecated)
+ */
+#define IPV6_EXT_RH_TYPE_NIMROD     (1U)
+
+/**
+ * @brief   Type 2 routing header
+ * @see     [RFC 6275, section 6.4](https://tools.ietf.org/html/rfc6275#section-6.4)
+ */
+#define IPV6_EXT_RH_TYPE_2          (2U)
+
+/**
+ * @brief   RPL source routing header
+ * @see     [RFC 6554](https://tools.ietf.org/html/rfc6554)
+ */
+#define IPV6_EXT_RH_TYPE_RPL_SRH    (3U)
+/** @} */
+
+/**
+ * @brief IPv6 Routing Type for SRv6 (Type 4)
+ */
+#define IPV6_EXT_RH_TYPE_SRV6       (4U)
+
+/**
+ * @brief   IPv6 routing extension header.
  *
- * @param[in] pkt   An IPv6 packet containing the routing header in the first
- *                  snip
+ * @see [RFC 8200](https://tools.ietf.org/html/rfc8200#section-4.4)
  *
- * @return  @ref GNRC_IPV6_EXT_RH_AT_DST, on success
- * @return  @ref GNRC_IPV6_EXT_RH_FORWARDED, when @p pkt was forwarded
- * @return  @ref GNRC_IPV6_EXT_RH_ERROR, on error
+ * @extends ipv6_ext_t
+ */
+typedef struct __attribute__((packed)) {
+    uint8_t nh;         /**< next header */
+    uint8_t len;        /**< length in 8 octets without first octet */
+    uint8_t type;       /**< identifier of a particular routing header type */
+    uint8_t seg_left;   /**< number of route segments remaining */
+} gnrc_ipv6_ext_rh_t;
+
+/**
+ * @name Return values for gnrc_ipv6_ext_rh_process
+ * @{
+ */
+#define GNRC_IPV6_EXT_RH_AT_DST      (0)
+#define GNRC_IPV6_EXT_RH_ERROR       (-1)
+#define GNRC_IPV6_EXT_RH_FORWARDED   (1)
+/** @} */
+
+/**
+ * @brief Process a routing header extension (RH, RPL SRH, SRv6 SRH)
+ *
+ * @param[in] pkt   The packet snip containing the routing header
+ * @return One of GNRC_IPV6_EXT_RH_AT_DST, GNRC_IPV6_EXT_RH_ERROR, GNRC_IPV6_EXT_RH_FORWARDED
  */
 int gnrc_ipv6_ext_rh_process(gnrc_pktsnip_t *pkt);
 
