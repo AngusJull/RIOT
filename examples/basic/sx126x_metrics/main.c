@@ -53,7 +53,7 @@ static void *_stats_loop(void *ctx)
         copy_to_records(battery_mv, NETSTATS_ALL, &stats);
 
         // Draw information
-        draw_display(battery_mv, 1, IDENTIFIER, stats);
+        draw_display(battery_mv, 1, IDENTIFIER, &stats);
         ztimer_sleep(ZTIMER_SEC, 1);
     }
     return NULL;

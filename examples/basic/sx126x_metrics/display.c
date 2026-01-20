@@ -24,6 +24,12 @@ static u8x8_riotos_t user_data = {
     .pin_reset = DISPLAY_RST_PIN,
 };
 
+static void next_line(unsigned int *cursor_x, unsigned int *cursor_y, unsigned int font_height)
+{
+    *cursor_x = 0;
+    *cursor_y += font_height;
+}
+
 // Prepare the display for drawing
 int init_display(void)
 {
@@ -41,9 +47,8 @@ int init_display(void)
 }
 
 // Draw to the display, providng all parameters that will be shown on the display
-void draw_display(unsigned int battery_mv, int display_route_notif, unsigned int identifier, netstats_t main_stats)
+void draw_display(unsigned int battery_mv, int display_route_notif, unsigned int identifier, netstats_t *main_stats)
 {
-    (void)main_stats;
     static char text_buffer[MAX_STRLEN];
 
     // Use a monospaced (for readability and predictability in size of output) font with restricted character set (less overhead from unused chars)
@@ -73,10 +78,18 @@ void draw_display(unsigned int battery_mv, int display_route_notif, unsigned int
         if (display_route_notif) {
             cursor_x += u8g2_DrawStr(&u8g2, cursor_x, cursor_y, "PKT ROUTED");
         }
+        next_line(&cursor_x, &cursor_y, DEFAULT_PAD_Y);
 
-        // New line
-        cursor_y += font_height + DEFAULT_PAD_Y;
-        cursor_x = 0;
+        cursor_x += u8g2_DrawStr(&u8g2, cursor_x, cursor_y, "STATS");
+        next_line(&cursor_x, &cursor_y, DEFAULT_PAD_Y);
+
+        snprintf(text_buffer, sizeof(text_buffer), "TX SUCC:%u FAIL:%u BYTE:%u", main_stats->tx_success, main_stats->tx_failed, main_stats->tx_bytes);
+        cursor_x += u8g2_DrawStr(&u8g2, cursor_x, cursor_y, text_buffer);
+        next_line(&cursor_x, &cursor_y, DEFAULT_PAD_Y);
+
+        snprintf(text_buffer, sizeof(text_buffer), "RX TOT:%u BYTE: %u", main_stats->rx_count, main_stats->tx_bytes);
+        cursor_x += u8g2_DrawStr(&u8g2, cursor_x, cursor_y, text_buffer);
+        next_line(&cursor_x, &cursor_y, DEFAULT_PAD_Y);
 
         // Look into special fonts with icons for better UI elements
     } while (u8g2_NextPage(&u8g2));
