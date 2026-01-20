@@ -1,9 +1,10 @@
-#include "net/netstats.h"
 #include "thread.h"
 #include "u8g2.h"
 #include "u8x8_riotos.h"
+#include "ztimer.h"
 #include <stdio.h>
 
+#include "stats.h"
 #include "display.h"
 
 #define DISPLAY_DEACTIVATE_PIN GPIO_PIN(0, 36) // OLED Power Control
@@ -59,7 +60,7 @@ static inline unsigned int clamp_width(unsigned int value, unsigned int width)
 }
 
 // Draw to the display, providng all parameters that will be shown on the display
-void draw_display(unsigned int battery_mv, int display_route_notif, unsigned int identifier, netstats_t *main_stats)
+void draw_display(unsigned int battery_mv, int display_route_notif, unsigned int identifier, struct netstat_record *main_stats)
 {
     static char text_buffer[MAX_STRLEN];
 
@@ -104,19 +105,38 @@ void draw_display(unsigned int battery_mv, int display_route_notif, unsigned int
     } while (u8g2_NextPage(&u8g2));
 }
 
+// Get a certain number of bytes from a buffer
+static void get_record(tsrb_t *tsrb, uint8_t *buf, size_t size)
+{
+    // Means there's at least one record in the buffer
+    if (tsrb_avail(tsrb) >= size) {
+        // If this fails, we get no bytes and buf isn't overwritten, or there's a new record and we get the new one
+        tsrb_get(tsrb, buf, size);
+    }
+}
+
 static void *_display_loop(void *ctx)
 {
-    (void)ctx;
+    struct display_thread_args *args = ctx;
     while (1) {
-        draw_display(0, 1, 0, &(netstats_t){ 0 });
+        struct power_record power = { 0 };
+        struct netstat_record netstat = { 0 };
+        struct capture_record capture = { 0 };
+
+        get_record(args->power_ringbuffer, (uint8_t *)&power, sizeof(power));
+        get_record(args->netstat_ringbuffer, (uint8_t *)&netstat, sizeof(netstat));
+        get_record(args->power_ringbuffer, (uint8_t *)&capture, sizeof(capture));
+
+        // TODO: Do something with the time associated with the capture thing
+        draw_display(power.millivolts, 1, IDENTIFIER, &netstat);
+        ztimer_sleep(ZTIMER_SEC, 1);
     }
     return NULL;
 }
 
 // Prepare the display for drawing
-int init_display_thread(void *ctx)
+int init_display_thread(struct display_thread_args *args)
 {
-    (void)ctx;
     gpio_init(DISPLAY_DEACTIVATE_PIN, GPIO_OUT);
     gpio_clear(DISPLAY_DEACTIVATE_PIN);
 
@@ -127,6 +147,6 @@ int init_display_thread(void *ctx)
     u8g2_InitDisplay(&u8g2);
     u8g2_SetPowerSave(&u8g2, 0);
 
-    thread_create(_stack, sizeof(_stack), THREAD_PRIORITY_MED, 0, _display_loop, 0, "display");
+    thread_create(_stack, sizeof(_stack), THREAD_PRIORITY_MED, 0, _display_loop, args, "display");
     return 0;
 }

@@ -36,9 +36,10 @@ int main(void)
     tsrb_init(&power_ringbuffer, (unsigned char *)power_buffer, sizeof(power_buffer));
     tsrb_init(&capture_ringbuffer, (unsigned char *)capture_buffer, sizeof(capture_buffer));
 
-    init_display_thread(NULL);
+    init_display_thread(&(struct display_thread_args){ .power_ringbuffer = &power_ringbuffer, .netstat_ringbuffer = &netstat_ringbuffer, .capture_ringbugger = &capture_ringbuffer });
     init_pkt_capture_thread(NULL);
     init_stats_thread(&(struct stats_thread_args){ .power_tsrb = &power_ringbuffer, .netstat_tsrb = &netstat_ringbuffer });
+
     (void)puts("Threads started, running shell\n");
     _shell_loop(NULL);
 
