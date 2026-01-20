@@ -2,6 +2,7 @@
 #define _STATS_H_
 
 #include "stdint.h"
+#include "tsrb.h"
 
 typedef uint32_t stat_time_t;
 
@@ -34,6 +35,15 @@ struct netstat_record {
     uint32_t rx_bytes;         /**< received bytes */
 };
 
-int init_stats_thread(void *ctx);
+struct capture_record {
+    stat_time_t time;
+};
+
+struct stats_thread_args {
+    tsrb_t *power_tsrb;
+    tsrb_t *netstat_tsrb;
+};
+
+int init_stats_thread(struct stats_thread_args *args);
 
 #endif // _STATS_H_
