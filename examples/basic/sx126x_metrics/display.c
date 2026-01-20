@@ -127,8 +127,13 @@ static void *_display_loop(void *ctx)
         get_record(args->netstat_ringbuffer, (uint8_t *)&netstat, sizeof(netstat));
         get_record(args->power_ringbuffer, (uint8_t *)&capture, sizeof(capture));
 
-        // TODO: Do something with the time associated with the capture thing
-        draw_display(power.millivolts, 1, IDENTIFIER, &netstat);
+        int display_route_notif = 0;
+        ztimer_now_t time = ztimer_now(ZTIMER_MSEC);
+        if (time - capture.time < 1000) {
+            display_route_notif = 1;
+        }
+
+        draw_display(power.millivolts, display_route_notif, IDENTIFIER, &netstat);
         ztimer_sleep(ZTIMER_SEC, 1);
     }
     return NULL;

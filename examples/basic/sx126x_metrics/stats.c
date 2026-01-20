@@ -13,7 +13,7 @@
 // Stack for the stats thread
 static char _stack[THREAD_STACKSIZE_MEDIUM];
 
-static int add_record(tsrb_t *tsrb, uint8_t *record, size_t size)
+int add_record(tsrb_t *tsrb, uint8_t *record, size_t size)
 {
     // Overwrite oldest value
     if (tsrb_avail(tsrb) < size) {
@@ -35,8 +35,8 @@ static void copy_netstat_to_record(netstats_t *from, enum netstat_type type, str
     dest->tx_unicast_count = from->tx_unicast_count;
     dest->rx_count = from->rx_count;
     dest->type = type;
-    // TODO: Get time source
-    dest->time = 0;
+    // Must use the same clock as other uses of ztimer_now
+    dest->time = ztimer_now(ZTIMER_MSEC);
 }
 
 // Stats collection and recording loop
@@ -60,7 +60,7 @@ static void *_stats_loop(void *ctx)
             }
             else {
                 struct netstat_record netstats;
-                copy_netstat_to_record(&stats, NETSTATS_LAYER2, &netstats);
+                copy_netstat_to_record(&stats, NETSTATS_RECORD_TYPE_L2, &netstats);
                 add_record(args->power_tsrb, (uint8_t *)&netstats, sizeof(netstats));
             }
         }

@@ -12,15 +12,15 @@ struct power_record {
 };
 
 enum netstat_type {
-    NETSTATS_TYPE_ALL,
-    NETSTATS_TYPE_IPV6,
-    NETSTATS_TYPE_L2,
+    NETSTATS_RECORD_TYPE_ALL,
+    NETSTATS_RECORD_TYPE_IPV6,
+    NETSTATS_RECORD_TYPE_L2,
 };
 
 // Stats for L2 or L3
 struct netstat_record {
-    stat_time_t time;
     enum netstat_type type;
+    stat_time_t time;
 
     // Copied from netstats_t, so that we can remove or add fields later
     uint32_t tx_unicast_count; /**< packets sent via unicast */
@@ -35,7 +35,14 @@ struct netstat_record {
     uint32_t rx_bytes;         /**< received bytes */
 };
 
+enum capture_type {
+    CAPTURE_RECORD_TYPE_RECV,
+    CAPTURE_RECORD_TYPE_SEND,
+};
+
+// Stats for received and sent packets
 struct capture_record {
+    enum capture_type type;
     stat_time_t time;
 };
 
@@ -45,5 +52,7 @@ struct stats_thread_args {
 };
 
 int init_stats_thread(struct stats_thread_args *args);
+
+int add_record(tsrb_t *tsrb, uint8_t *record, size_t size);
 
 #endif // _STATS_H_

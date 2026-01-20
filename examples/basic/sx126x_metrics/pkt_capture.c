@@ -1,9 +1,10 @@
+#include "net/gnrc/pktbuf.h"
 #include "sys/errno.h"
 #include "net/gnrc/netapi.h"
 #include "net/gnrc/netreg.h"
-#include "net/gnrc/pktbuf.h"
-#include "thread.h"
+#include "ztimer.h"
 
+#include "stats.h"
 #include "pkt_capture.h"
 
 // Threads that need to run whenever availabile
@@ -13,10 +14,17 @@ static char _stack[THREAD_STACKSIZE_MEDIUM];
 // Size of the message queue for recieving packets
 #define QUEUE_SIZE 5
 
+void add_capture_record(tsrb_t *capture_tsrb, void *pkt, enum capture_type type)
+{
+    (void)pkt;
+    struct capture_record record = { .type = type, .time = ztimer_now(ZTIMER_MSEC) };
+    add_record(capture_tsrb, (uint8_t *)&record, sizeof(record));
+}
+
 static void *_pkt_capture_loop(void *ctx)
 {
-    capture_callback callback = ctx;
-    (void)callback;
+    struct pkt_capture_thread_args *args = ctx;
+
     static msg_t _msg_q[QUEUE_SIZE];
     msg_t msg;
 
@@ -36,14 +44,12 @@ static void *_pkt_capture_loop(void *ctx)
         switch (msg.type) {
         case GNRC_NETAPI_MSG_TYPE_RCV:
             // Recieving Data
-            (void)msg.content.ptr;
-            callback(msg.content.ptr, CAPTURE_CALLBACK_RECIEVED);
+            add_capture_record(args->capture_tsrb, msg.content.ptr, CAPTURE_RECORD_TYPE_RECV);
             gnrc_pktbuf_release(msg.content.ptr);
             break;
         case GNRC_NETAPI_MSG_TYPE_SND:
             // Sending data
-            callback(msg.content.ptr, CAPTURE_CALLBACK_SENDING);
-            (void)msg.content.ptr;
+            add_capture_record(args->capture_tsrb, msg.content.ptr, CAPTURE_RECORD_TYPE_SEND);
             gnrc_pktbuf_release(msg.content.ptr);
             break;
         // These case statements aren't needed for just watching for send/recv
@@ -58,7 +64,7 @@ static void *_pkt_capture_loop(void *ctx)
     return NULL;
 }
 
-void init_pkt_capture_thread(capture_callback callback)
+void init_pkt_capture_thread(struct pkt_capture_thread_args *args)
 {
-    thread_create(_stack, sizeof(_stack), THREAD_PRIORITY_MED, 0, _pkt_capture_loop, callback, "packet capture");
+    thread_create(_stack, sizeof(_stack), THREAD_PRIORITY_MED, 0, _pkt_capture_loop, args, "packet capture");
 }

@@ -1,13 +1,12 @@
 #ifndef _PKT_CAPTURE_H_
 #define _PKT_CAPTURE_H_
 
-enum callback_type {
-    CAPTURE_CALLBACK_RECIEVED,
-    CAPTURE_CALLBACK_SENDING,
+#include "tsrb.h"
+
+struct pkt_capture_thread_args {
+    tsrb_t *capture_tsrb;
 };
 
-typedef void (*capture_callback)(void *, enum callback_type);
-
-void init_pkt_capture_thread(capture_callback callback);
+void init_pkt_capture_thread(struct pkt_capture_thread_args *args);
 
 #endif // _PKT_CAPTURE_H_
