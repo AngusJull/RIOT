@@ -33,7 +33,7 @@ int add_netstat_record(struct netstat_record *record)
     // Overwrite oldest value
     uint8_t *data = (uint8_t *)record;
     for (unsigned i = 0; i < sizeof(*record); i++) {
-        ringbuffer_add_one(&power_ringbuffer, data[i]);
+        ringbuffer_add_one(&netstat_ringbuffer, data[i]);
     }
     return 0;
 }

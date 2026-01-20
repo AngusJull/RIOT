@@ -34,7 +34,5 @@ void print_netif_name(netif_t *netif)
     if (netif != NULL) {
         netif_get_name(netif, name);
     }
-    // Make sure name has null terminator, may be faster just to set the last char
-    name[sizeof(name) - 1] = '\n';
-    puts(name);
+    printf("Radio name: %s\n", name);
 }

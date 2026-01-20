@@ -39,22 +39,24 @@ static void *_stats_loop(void *ctx)
 {
     (void)ctx;
     netif_t *radio_netif = get_lora_netif();
-    DEBUG("Radio netif identified as %p", radio_netif);
+    DEBUG("Radio netif identified as %p\n", radio_netif);
     print_netif_name(radio_netif);
 
     init_display();
     init_battery_adc();
+    init_stats();
     while (1) {
         // Get new information
         unsigned int battery_mv = read_battery_mv();
         netstats_t stats;
 
         if (radio_netif) {
-            //if (get_stats(radio_netif, NETSTATS_ALL, &stats) < 0) {
-            //    DEBUG("Could not read stats\n");
-            //}
-            // Copy for reading out later
-            //copy_to_records(battery_mv, NETSTATS_ALL, &stats);
+            if (get_stats(radio_netif, NETSTATS_LAYER2, &stats) < 0) {
+                DEBUG("Could not read stats\n");
+            }
+            else {
+                copy_to_records(battery_mv, NETSTATS_ALL, &stats);
+            }
         }
 
         // Draw information
