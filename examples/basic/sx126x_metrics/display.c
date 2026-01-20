@@ -10,9 +10,18 @@
 #define DISPLAY_I2C            0    // I2C Line, could be made into a
 #define DISPLAY_I2C_ADDR       0x3c // I2C Address
 
+// Maximum character widths for integers
 #define MAX_STRLEN             30
-#define MAX_BATTERY            9999 // Maximum value for battery, to prevent using more than four chars
-#define MAX_IDENTIFIER         99
+#define MAX_BAT_WIDTH          4 // Maximum value for battery, to prevent using more than four chars
+#define MAX_ID_WIDTH           2
+#define MAX_BYTE_WIDTH         5
+#define MAX_COUNT_WIDTH        3
+
+// Allow integer widths to be used in string formatting
+#define _STRINGIFY(x)          #x
+// Force expansion of the enclosed macro
+#define STR(macro)             _STRINGIFY(macro)
+
 #define DEFAULT_PAD_X          3
 #define DEFAULT_PAD_Y          3
 
@@ -24,10 +33,24 @@ static u8x8_riotos_t user_data = {
     .pin_reset = DISPLAY_RST_PIN,
 };
 
-static void next_line(unsigned int *cursor_x, unsigned int *cursor_y, unsigned int font_height)
+static void next_line(unsigned int *cursor_x, unsigned int *cursor_y, unsigned int font_height, unsigned int pad_y)
 {
     *cursor_x = 0;
-    *cursor_y += font_height;
+    *cursor_y += font_height + pad_y;
+}
+
+static inline unsigned int clamp_width(unsigned int value, unsigned int width)
+{
+    unsigned int max = 0;
+    for (unsigned int i = 0; i < width; i++) {
+        max *= 10; //NOLINT
+        max += 9;  //NOLINT
+    }
+
+    if (value > max) {
+        return max;
+    }
+    return value;
 }
 
 // Prepare the display for drawing
@@ -62,34 +85,31 @@ void draw_display(unsigned int battery_mv, int display_route_notif, unsigned int
         // u8g2 draws downwards, so set cursor to after the first line on the display
         unsigned int cursor_y = font_height;
 
-        if (battery_mv > MAX_BATTERY) {
-            battery_mv = MAX_BATTERY;
-        }
-        snprintf(text_buffer, sizeof(text_buffer), "%.4dmV", battery_mv);
+        snprintf(text_buffer, sizeof(text_buffer), "%." STR(MAX_BAT_WIDTH) "dmV", clamp_width(battery_mv, MAX_BAT_WIDTH));
         cursor_x += u8g2_DrawStr(&u8g2, cursor_x, cursor_y, text_buffer) + DEFAULT_PAD_X;
 
-        if (identifier > MAX_IDENTIFIER) {
-            identifier = MAX_IDENTIFIER;
-        }
-        snprintf(text_buffer, sizeof(text_buffer), "ID:%.2d", identifier);
+        snprintf(text_buffer, sizeof(text_buffer), "ID:%." STR(MAX_ID_WIDTH) "d", clamp_width(identifier, MAX_ID_WIDTH));
         cursor_x += u8g2_DrawStr(&u8g2, cursor_x, cursor_y, text_buffer) + DEFAULT_PAD_X;
 
         // If there was recently something routed, display something on the display
         if (display_route_notif) {
-            cursor_x += u8g2_DrawStr(&u8g2, cursor_x, cursor_y, "PKT ROUTED");
+            cursor_x += u8g2_DrawStr(&u8g2, cursor_x, cursor_y, "|ROUTED|");
         }
-        next_line(&cursor_x, &cursor_y, DEFAULT_PAD_Y);
+        next_line(&cursor_x, &cursor_y, font_height, DEFAULT_PAD_Y);
 
         cursor_x += u8g2_DrawStr(&u8g2, cursor_x, cursor_y, "STATS");
-        next_line(&cursor_x, &cursor_y, DEFAULT_PAD_Y);
+        next_line(&cursor_x, &cursor_y, font_height, DEFAULT_PAD_Y);
 
-        snprintf(text_buffer, sizeof(text_buffer), "TX SUCC:%u FAIL:%u BYTE:%u", main_stats->tx_success, main_stats->tx_failed, main_stats->tx_bytes);
+        snprintf(text_buffer, sizeof(text_buffer), "TX PKT SUCC:%u FAIL:%u",
+                 clamp_width(main_stats->tx_success, MAX_COUNT_WIDTH),
+                 clamp_width(main_stats->tx_failed, MAX_COUNT_WIDTH));
         cursor_x += u8g2_DrawStr(&u8g2, cursor_x, cursor_y, text_buffer);
-        next_line(&cursor_x, &cursor_y, DEFAULT_PAD_Y);
+        next_line(&cursor_x, &cursor_y, font_height, DEFAULT_PAD_Y);
 
-        snprintf(text_buffer, sizeof(text_buffer), "RX TOT:%u BYTE: %u", main_stats->rx_count, main_stats->tx_bytes);
+        snprintf(text_buffer, sizeof(text_buffer), "RX PKT TOT:%u",
+                 clamp_width(main_stats->rx_count, MAX_COUNT_WIDTH));
         cursor_x += u8g2_DrawStr(&u8g2, cursor_x, cursor_y, text_buffer);
-        next_line(&cursor_x, &cursor_y, DEFAULT_PAD_Y);
+        next_line(&cursor_x, &cursor_y, font_height, DEFAULT_PAD_Y);
 
         // Look into special fonts with icons for better UI elements
     } while (u8g2_NextPage(&u8g2));
