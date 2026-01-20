@@ -1,8 +1,10 @@
-#include "display.h"
-
+#include "net/netstats.h"
+#include "thread.h"
 #include "u8g2.h"
 #include "u8x8_riotos.h"
 #include <stdio.h>
+
+#include "display.h"
 
 #define DISPLAY_DEACTIVATE_PIN GPIO_PIN(0, 36) // OLED Power Control
 #define DISPLAY_RST_PIN        GPIO_PIN(0, 21) // OLED Reset
@@ -24,6 +26,9 @@
 
 #define DEFAULT_PAD_X          3
 #define DEFAULT_PAD_Y          3
+
+#define THREAD_PRIORITY_MED    (THREAD_PRIORITY_MAIN - 2)
+static char _stack[THREAD_STACKSIZE_MEDIUM];
 
 static u8g2_t u8g2;
 static u8x8_riotos_t user_data = {
@@ -51,22 +56,6 @@ static inline unsigned int clamp_width(unsigned int value, unsigned int width)
         return max;
     }
     return value;
-}
-
-// Prepare the display for drawing
-int init_display(void)
-{
-    gpio_init(DISPLAY_DEACTIVATE_PIN, GPIO_OUT);
-    gpio_clear(DISPLAY_DEACTIVATE_PIN);
-
-    u8g2_Setup_ssd1306_i2c_128x64_noname_1(&u8g2, U8G2_R0, u8x8_byte_hw_i2c_riotos, u8x8_gpio_and_delay_riotos);
-
-    u8g2_SetUserPtr(&u8g2, &user_data);
-    u8g2_SetI2CAddress(&u8g2, DISPLAY_I2C_ADDR);
-    u8g2_InitDisplay(&u8g2);
-    u8g2_SetPowerSave(&u8g2, 0);
-
-    return 0;
 }
 
 // Draw to the display, providng all parameters that will be shown on the display
@@ -113,4 +102,31 @@ void draw_display(unsigned int battery_mv, int display_route_notif, unsigned int
 
         // Look into special fonts with icons for better UI elements
     } while (u8g2_NextPage(&u8g2));
+}
+
+static void *_display_loop(void *ctx)
+{
+    (void)ctx;
+    while (1) {
+        draw_display(0, 1, 0, &(netstats_t){ 0 });
+    }
+    return NULL;
+}
+
+// Prepare the display for drawing
+int init_display_thread(void *ctx)
+{
+    (void)ctx;
+    gpio_init(DISPLAY_DEACTIVATE_PIN, GPIO_OUT);
+    gpio_clear(DISPLAY_DEACTIVATE_PIN);
+
+    u8g2_Setup_ssd1306_i2c_128x64_noname_1(&u8g2, U8G2_R0, u8x8_byte_hw_i2c_riotos, u8x8_gpio_and_delay_riotos);
+
+    u8g2_SetUserPtr(&u8g2, &user_data);
+    u8g2_SetI2CAddress(&u8g2, DISPLAY_I2C_ADDR);
+    u8g2_InitDisplay(&u8g2);
+    u8g2_SetPowerSave(&u8g2, 0);
+
+    thread_create(_stack, sizeof(_stack), THREAD_PRIORITY_MED, 0, _display_loop, 0, "display");
+    return 0;
 }

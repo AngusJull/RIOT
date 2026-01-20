@@ -1,7 +1,6 @@
 #ifndef _STATS_H_
 #define _STATS_H_
 
-#include "net/netstats.h"
 #include "stdint.h"
 
 typedef uint32_t stat_time_t;
@@ -35,12 +34,6 @@ struct netstat_record {
     uint32_t rx_bytes;         /**< received bytes */
 };
 
-int init_stats(void);
-
-int add_power_record(struct power_record *record);
-
-int add_netstat_record(struct netstat_record *record);
-
-void copy_netstat_to_record(netstats_t *from, enum netstat_type type, struct netstat_record *to);
+int init_stats_thread(void *ctx);
 
 #endif // _STATS_H_
