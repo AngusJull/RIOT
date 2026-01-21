@@ -5,7 +5,7 @@
 #include "tsrb.h"
 #include "ztimer.h"
 
-#define ENABLE_DEBUG 0
+#define ENABLE_DEBUG 1
 #include "debug.h"
 
 // Threads that need to run whenever availabile
@@ -16,13 +16,12 @@ static char _stack[THREAD_STACKSIZE_MEDIUM];
 int add_record(tsrb_t *tsrb, uint8_t *record, size_t size)
 {
     // Overwrite oldest value
-    if (tsrb_avail(tsrb) < size) {
+    if (tsrb_free(tsrb) < size) {
         // Must drop whole records so we don't corrupt data
         tsrb_drop(tsrb, size);
         // Assume this completed successfully, but if it doesn't should just be unable to add
     }
-    tsrb_add(tsrb, record, size);
-    return 0;
+    return tsrb_add(tsrb, record, size);
 }
 
 static void copy_netstat_to_record(netstats_t *from, enum netstat_type type, struct netstat_record *dest)
@@ -50,7 +49,7 @@ static void *_stats_loop(void *ctx)
     init_battery_adc();
     while (1) {
         // Get new information
-        struct power_record power = { .time = 0, .millivolts = read_battery_mv() };
+        struct power_record power = { .time = ztimer_now(ZTIMER_MSEC), .millivolts = read_battery_mv() };
         add_record(args->power_tsrb, (uint8_t *)&power, sizeof(power));
 
         netstats_t stats;
@@ -61,12 +60,11 @@ static void *_stats_loop(void *ctx)
             else {
                 struct netstat_record netstats;
                 copy_netstat_to_record(&stats, NETSTATS_RECORD_TYPE_L2, &netstats);
-                add_record(args->power_tsrb, (uint8_t *)&netstats, sizeof(netstats));
+                add_record(args->netstat_tsrb, (uint8_t *)&netstats, sizeof(netstats));
             }
         }
-
         // Draw information
-        ztimer_sleep(ZTIMER_SEC, 1);
+        ztimer_sleep(ZTIMER_MSEC, 1000);
     }
     return NULL;
 }

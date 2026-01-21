@@ -4,6 +4,9 @@
 #include "net/gnrc/netreg.h"
 #include "ztimer.h"
 
+#define ENABLE_DEBUG 1
+#include "debug.h"
+
 #include "stats.h"
 #include "pkt_capture.h"
 
@@ -12,7 +15,7 @@
 // Stack for the stats thread
 static char _stack[THREAD_STACKSIZE_MEDIUM];
 // Size of the message queue for recieving packets
-#define QUEUE_SIZE 5
+#define QUEUE_SIZE 8
 
 void add_capture_record(tsrb_t *capture_tsrb, void *pkt, enum capture_type type)
 {

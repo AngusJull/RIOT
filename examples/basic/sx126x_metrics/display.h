@@ -11,7 +11,7 @@
 struct display_thread_args {
     tsrb_t *power_ringbuffer;
     tsrb_t *netstat_ringbuffer;
-    tsrb_t *capture_ringbugger;
+    tsrb_t *capture_ringbuffer;
 };
 
 int init_display_thread(struct display_thread_args *args);

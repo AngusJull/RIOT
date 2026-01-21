@@ -2,7 +2,11 @@
 #include "u8g2.h"
 #include "u8x8_riotos.h"
 #include "ztimer.h"
+#include "irq.h"
 #include <stdio.h>
+
+#define ENABLE_DEBUG 1
+#include "debug.h"
 
 #include "stats.h"
 #include "display.h"
@@ -105,36 +109,49 @@ void draw_display(unsigned int battery_mv, int display_route_notif, unsigned int
     } while (u8g2_NextPage(&u8g2));
 }
 
-// Get a certain number of bytes from a buffer
-static void get_record(tsrb_t *tsrb, uint8_t *buf, size_t size)
+// Get a certain number of bytes from the buffer, but get the newest data instead of the oldest
+// No function in tsrb.h exists for this, so this is implemented in the same style
+static unsigned int peek_tsrb_head(tsrb_t *tsrb, uint8_t *buf, size_t size)
 {
-    // Means there's at least one record in the buffer
-    if (tsrb_avail(tsrb) >= size) {
-        // If this fails, we get no bytes and buf isn't overwritten, or there's a new record and we get the new one
-        tsrb_get(tsrb, buf, size);
+    // Whole thing might as well be atomic
+    unsigned int irq_state = irq_disable();
+    unsigned int avail = (tsrb->writes - tsrb->reads);
+    // If this fails, we get no bytes and buf isn't overwritten, or there's a new record and we get the new one
+    if (avail >= size) {
+        size_t idx = 0;
+        // Copy out size bytes, with the last byte copied being the one just before tsrb->writes
+        while (idx < size) {
+            *buf++ = tsrb->buf[(tsrb->writes - size + idx++) & (tsrb->size - 1)];
+        }
+        irq_restore(irq_state);
+        return idx;
     }
+    irq_restore(irq_state);
+    return 0;
 }
 
 static void *_display_loop(void *ctx)
 {
     struct display_thread_args *args = ctx;
-    while (1) {
-        struct power_record power = { 0 };
-        struct netstat_record netstat = { 0 };
-        struct capture_record capture = { 0 };
 
-        get_record(args->power_ringbuffer, (uint8_t *)&power, sizeof(power));
-        get_record(args->netstat_ringbuffer, (uint8_t *)&netstat, sizeof(netstat));
-        get_record(args->power_ringbuffer, (uint8_t *)&capture, sizeof(capture));
+    struct power_record power = { 0 };
+    struct netstat_record netstat = { 0 };
+    struct capture_record capture = { 0 };
+
+    while (1) {
+        peek_tsrb_head(args->power_ringbuffer, (uint8_t *)&power, sizeof(power));
+        peek_tsrb_head(args->netstat_ringbuffer, (uint8_t *)&netstat, sizeof(netstat));
+        peek_tsrb_head(args->capture_ringbuffer, (uint8_t *)&capture, sizeof(capture));
 
         int display_route_notif = 0;
         ztimer_now_t time = ztimer_now(ZTIMER_MSEC);
-        if (time - capture.time < 1000) {
+        if (time - capture.time < 2000) {
             display_route_notif = 1;
         }
 
         draw_display(power.millivolts, display_route_notif, IDENTIFIER, &netstat);
-        ztimer_sleep(ZTIMER_SEC, 1);
+        // 4Hz refresh rate to not use up too much battery life, hopefully
+        ztimer_sleep(ZTIMER_MSEC, 200);
     }
     return NULL;
 }
