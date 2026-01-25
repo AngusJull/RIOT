@@ -25,7 +25,7 @@ static int _srv6_ping(int argc, char **argv)
         printf("Usage: srv6_ping <destination> <segment1> [segment2 ...]\n");
         return 1;
     }
-
+    
     ipv6_addr_t dest;
     if (ipv6_addr_from_str(&dest, argv[1]) == NULL) {
         printf("Invalid destination address\n");
@@ -55,26 +55,26 @@ static int _srv6_ping(int argc, char **argv)
     srh->flags = 0;
     srh->tag = 0;
 
+
     ipv6_addr_t *segments = (ipv6_addr_t *)(srh + 1);
-    for (int i = 0; i < num_segments; i++) {
-        if (i < num_segments - 1) {
-            // Parse intermediate segments
-            if (ipv6_addr_from_str(&segments[i], argv[2 + i]) == NULL) {
-                printf("Invalid segment address %s\n", argv[2 + i]);
-                gnrc_pktbuf_release(srh_snip);
-                return 1;
-            }
-        } else {
-            // Last segment is the final destination
-            memcpy(&segments[i], &dest, sizeof(ipv6_addr_t));
+    // segment_list[0] = final destination; segment_list[last_entry] = first hop
+    memcpy(&segments[0], &dest, sizeof(ipv6_addr_t));
+
+    for (int i = 0; i < num_segments-1; i++) {
+        int seg_idx = num_segments-1 - i;      // fill from the end backwards
+        if (ipv6_addr_from_str(&segments[seg_idx], argv[2 + i]) == NULL) {
+            printf("Invalid segment address %s\n", argv[2 + i]);
+            gnrc_pktbuf_release(srh_snip);
+            return 1;
         }
     }
 
-    // set the next destination to the first segment
-    ipv6_addr_t ipv6_dest = segments[0];
+    // initial IPv6 destination is the first hop
+    ipv6_addr_t ipv6_dest = segments[srh->last_entry];
 
     // allocate ICMPv6 echo request
-    gnrc_pktsnip_t *pkt = gnrc_icmpv6_echo_build(ICMPV6_ECHO_REQ, 0, 1, NULL, 0); // we can replace this with whatever packet
+    static uint16_t seq = 1;
+    gnrc_pktsnip_t *pkt = gnrc_icmpv6_echo_build(ICMPV6_ECHO_REQ, 0, seq++, NULL, 0); // TODO: hannah 26-01-14 replace with udp
     if (pkt == NULL) {
         printf("Failed to allocate ICMPv6 echo\n");
         gnrc_pktbuf_release(srh_snip);
@@ -84,14 +84,14 @@ static int _srv6_ping(int argc, char **argv)
     // chain packets: SRH -> ICMP (SRH encapsulates the ICMP payload)
     srh_snip->next = pkt;
 
-    // add IPv6 header with destination set to first segment
-    // gnrc_ipv6_hdr_build will automatically set nh field based on next snip type
+    // add IPv6 header w/ first segment as dest
+    // gnrc_ipv6_hdr_build will auto-set nh field from next snip type
     gnrc_pktsnip_t *ipv6_snip = gnrc_ipv6_hdr_build(srh_snip, NULL, &ipv6_dest);
     if (ipv6_snip == NULL) {
         printf("Failed to allocate IPv6 header\n");
         gnrc_pktbuf_release(srh_snip);
         return 1;
-    }
+    } 
     pkt = ipv6_snip;
 
     // send packet to IPv6 layer for transmission

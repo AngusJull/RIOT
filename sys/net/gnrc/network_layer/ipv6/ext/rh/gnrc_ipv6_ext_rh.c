@@ -29,7 +29,7 @@
 
 #include "net/gnrc/ipv6/ext/rh.h"
 
-#define ENABLE_DEBUG 0
+#define ENABLE_DEBUG 1
 #include "debug.h"
 
 /* unchecked precondition: hdr is gnrc_pktsnip_t::data of the
@@ -89,6 +89,7 @@ int gnrc_ipv6_ext_rh_process(gnrc_pktsnip_t *pkt)
 #endif
 #ifdef MODULE_GNRC_SRV6_SRH
     case IPV6_EXT_RH_TYPE_SRV6:
+        printf("SRv6 packet recieved. Processing.");
         res = gnrc_srv6_srh_process(hdr, (gnrc_srv6_srh_t *)ext, &err_ptr);
         break;
 #endif

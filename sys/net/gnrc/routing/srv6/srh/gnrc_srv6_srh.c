@@ -2,6 +2,9 @@
 #include "net/gnrc/ipv6/ext/rh.h"
 #include "net/ipv6/addr.h"
 #include "net/gnrc/srv6/srh.h"
+#include "net/gnrc/pktbuf.h"
+#include "net/gnrc/netapi.h"
+#include "net/gnrc/netreg.h"
 
 #define ENABLE_DEBUG 1
 #include "debug.h"
@@ -45,6 +48,8 @@ int gnrc_srv6_srh_process(ipv6_hdr_t *ipv6, gnrc_srv6_srh_t *rh, void **err_ptr)
     // Swap the IPv6 Destination with the Next Segment
     memcpy(&ipv6->dst, next_hop, sizeof(ipv6_addr_t));
 
-    // Tell the dispatcher to forward this packet to the new destination
-    return GNRC_IPV6_EXT_RH_FORWARDED;
+
+    /* 5. Return ERROR or a custom code to STOP the current thread 
+     * from trying to process the packet further locally. */
+    return GNRC_IPV6_EXT_RH_ERROR;
 }

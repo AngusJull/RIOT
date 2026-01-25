@@ -73,6 +73,10 @@ USEMODULE += gnrc_icmpv6_error
 # include SRv6 processing module
 USEMODULE += gnrc_srv6_srh
 
+USEMODULE += gnrc_ipv6
+USEMODULE += gnrc_ipv6_nib
+USEMODULE += gnrc_ipv6_nib_router
+
 # enable stats
 USEMODULE += netstats_l2
 USEMODULE += netstats_ipv6
@@ -86,6 +90,9 @@ USEMODULE += sx126x_ieee802154
 ifndef CONFIG_GNRC_PKTBUF_SIZE
 	CFLAGS += -DCONFIG_GNRC_PKTBUF_SIZE=1024
 endif
+
+CFLAGS += -DCONFIG_GNRC_IPV6_FORWARDING=1
+CFLAGS += -DGNRC_IPV6_MIN_MTU=80
 
 include $(RIOTBASE)/Makefile.include
 

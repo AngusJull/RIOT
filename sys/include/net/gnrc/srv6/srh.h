@@ -34,7 +34,7 @@ extern "C" {
 #  define IPV6_EXT_RH_TYPE_SRV6 (4U)
 
 /**
- * @brief   The SRv6 Segment Routing Header.
+ * @brief   The SRv6 Segment Routing Header.b
  * * This structure represents the fixed 8-byte portion of an SRH.
  * The Segment List (array of ipv6_addr_t) follows immediately after.
  *
