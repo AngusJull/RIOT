@@ -51,5 +51,5 @@ int gnrc_srv6_srh_process(ipv6_hdr_t *ipv6, gnrc_srv6_srh_t *rh, void **err_ptr)
 
     /* 5. Return ERROR or a custom code to STOP the current thread 
      * from trying to process the packet further locally. */
-    return GNRC_IPV6_EXT_RH_ERROR;
+    return GNRC_IPV6_EXT_RH_FORWARDED;
 }
