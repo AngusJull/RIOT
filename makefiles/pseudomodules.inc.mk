@@ -183,6 +183,12 @@ PSEUDOMODULES += gnrc_nettype_ndn
 PSEUDOMODULES += gnrc_nettype_sixlowpan
 ## @}
 
+## @defgroup 	net_gnrc_nettype_sixlowpan_prenetif  gnrc_nettype_sixlowpan_prenetif
+## Enables @ref GNRC_NETTYPE_SIXLOWPAN_PRENETIF
+## @{
+PSEUDOMODULES += gnrc_nettype_sixlowpan_prenetif
+## @}
+
 ## @defgroup 	net_gnrc_nettype_tcp        gnrc_nettype_tcp
 ## Enables @ref GNRC_NETTYPE_TCP
 ## @{

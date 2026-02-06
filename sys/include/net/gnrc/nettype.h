@@ -59,19 +59,24 @@ typedef enum {
      *          @ref net_gnrc_netreg
      */
     GNRC_NETTYPE_NETIF = -1,
-    GNRC_NETTYPE_UNDEF = 0,     /**< Protocol is undefined */
+    GNRC_NETTYPE_UNDEF = 0, /**< Protocol is undefined */
 
-    /**
+/**
      * @{
      * @name Link layer
      */
 #if IS_USED(MODULE_GNRC_NETTYPE_CUSTOM) || defined(DOXYGEN)
-    GNRC_NETTYPE_CUSTOM,         /**< Custom ethertype */
+    GNRC_NETTYPE_CUSTOM, /**< Custom ethertype */
 #endif
-    /** @} */
+/** @} */
 
 #if IS_USED(MODULE_GNRC_NETTYPE_SIXLOWPAN) || defined(DOXYGEN)
-    GNRC_NETTYPE_SIXLOWPAN,     /**< Protocol is 6LoWPAN */
+    GNRC_NETTYPE_SIXLOWPAN, /**< Protocol is 6LoWPAN */
+
+#  if IS_USED(MODULE_GNRC_NETTYPE_SIXLOWPAN_PRENETIF)
+    GNRC_NETTYPE_SIXLOWPAN_PRENETIF, /**< Protocol is 6LoWPAN, before being sent */
+#  endif
+
 #endif
 
 #if IS_USED(MODULE_GNRC_NETTYPE_LORAWAN) || defined(DOXYGEN)
@@ -80,56 +85,56 @@ typedef enum {
  * @deprecated  LoRaWAN payloads do not have a special type anymore and just use
  *              @ref GNRC_NETTYPE_UNDEF. Will be removed after 2024.10 release.
  */
-#define GNRC_NETTYPE_LORAWAN    GNRC_NETTYPE_UNDEF
+#  define GNRC_NETTYPE_LORAWAN GNRC_NETTYPE_UNDEF
 #endif
 
-    /**
+/**
      * @{
      * @name Network layer
      */
 #if IS_USED(MODULE_GNRC_NETTYPE_IPV6) || defined(DOXYGEN)
-    GNRC_NETTYPE_IPV6,          /**< Protocol is IPv6 */
+    GNRC_NETTYPE_IPV6, /**< Protocol is IPv6 */
 #endif
 #if IS_USED(MODULE_GNRC_NETTYPE_IPV6_EXT) || defined(DOXYGEN)
-    GNRC_NETTYPE_IPV6_EXT,      /**< Protocol is IPv6 extension header */
+    GNRC_NETTYPE_IPV6_EXT, /**< Protocol is IPv6 extension header */
 #endif
 #if IS_USED(MODULE_GNRC_NETTYPE_ICMPV6) || defined(DOXYGEN)
-    GNRC_NETTYPE_ICMPV6,        /**< Protocol is ICMPv6 */
+    GNRC_NETTYPE_ICMPV6, /**< Protocol is ICMPv6 */
 #endif
 
 #if IS_USED(MODULE_GNRC_NETTYPE_CCN) || defined(DOXYGEN)
-    GNRC_NETTYPE_CCN,           /**< Protocol is CCN */
-    GNRC_NETTYPE_CCN_CHUNK,     /**< Protocol is CCN, packet contains a content
+    GNRC_NETTYPE_CCN,       /**< Protocol is CCN */
+    GNRC_NETTYPE_CCN_CHUNK, /**< Protocol is CCN, packet contains a content
                                      chunk */
 #endif
 
 #if IS_USED(MODULE_GNRC_NETTYPE_NDN) || defined(DOXYGEN)
-    GNRC_NETTYPE_NDN,           /**< Protocol is NDN */
+    GNRC_NETTYPE_NDN, /**< Protocol is NDN */
 #endif
-    /** @} */
+/** @} */
 
-    /**
+/**
      * @{
      * @name Transport layer
      */
 #if IS_USED(MODULE_GNRC_NETTYPE_TCP) || defined(DOXYGEN)
-    GNRC_NETTYPE_TCP,           /**< Protocol is TCP */
+    GNRC_NETTYPE_TCP, /**< Protocol is TCP */
 #endif
 #if IS_USED(MODULE_GNRC_NETTYPE_UDP) || defined(DOXYGEN)
-    GNRC_NETTYPE_UDP,           /**< Protocol is UDP */
+    GNRC_NETTYPE_UDP, /**< Protocol is UDP */
 #endif
-    /** @} */
+/** @} */
 
-    /**
+/**
      * @{
      * @name Testing
      */
 #ifdef TEST_SUITES
-    GNRC_NETTYPE_TEST,          /**< Usable with test vectors */
+    GNRC_NETTYPE_TEST, /**< Usable with test vectors */
 #endif
     /** @} */
 
-    GNRC_NETTYPE_NUMOF,         /**< maximum number of available protocols */
+    GNRC_NETTYPE_NUMOF, /**< maximum number of available protocols */
 } gnrc_nettype_t;
 
 /**
@@ -145,27 +150,27 @@ static inline gnrc_nettype_t gnrc_nettype_from_ethertype(uint16_t type)
 {
     switch (type) {
 #if IS_USED(MODULE_GNRC_NETTYPE_IPV6)
-        case ETHERTYPE_IPV6:
-            return GNRC_NETTYPE_IPV6;
+    case ETHERTYPE_IPV6:
+        return GNRC_NETTYPE_IPV6;
 #endif
 #if IS_USED(MODULE_GNRC_NETTYPE_CCN) || IS_USED(MODULE_GNRC_NETTYPE_NDN)
-        case ETHERTYPE_NDN:
-#if IS_USED(MODULE_GNRC_NETTYPE_CCN)
-            return GNRC_NETTYPE_CCN;
-#elif IS_USED(MODULE_GNRC_NETTYPE_NDN)
-            return GNRC_NETTYPE_NDN;
-#endif
+    case ETHERTYPE_NDN:
+#  if IS_USED(MODULE_GNRC_NETTYPE_CCN)
+        return GNRC_NETTYPE_CCN;
+#  elif IS_USED(MODULE_GNRC_NETTYPE_NDN)
+        return GNRC_NETTYPE_NDN;
+#  endif
 #endif
 #if IS_USED(MODULE_GNRC_SIXLOENC) && IS_USED(MODULE_GNRC_NETTYPE_SIXLOWPAN)
-        case ETHERTYPE_6LOENC:
-            return GNRC_NETTYPE_SIXLOWPAN;
+    case ETHERTYPE_6LOENC:
+        return GNRC_NETTYPE_SIXLOWPAN;
 #endif
 #if IS_USED(MODULE_GNRC_NETTYPE_CUSTOM)
-        case ETHERTYPE_CUSTOM:
-            return GNRC_NETTYPE_CUSTOM;
+    case ETHERTYPE_CUSTOM:
+        return GNRC_NETTYPE_CUSTOM;
 #endif
-        default:
-            return GNRC_NETTYPE_UNDEF;
+    default:
+        return GNRC_NETTYPE_UNDEF;
     }
 }
 
@@ -182,27 +187,27 @@ static inline uint16_t gnrc_nettype_to_ethertype(gnrc_nettype_t type)
 {
     switch (type) {
 #if IS_USED(MODULE_GNRC_NETTYPE_CUSTOM)
-        case GNRC_NETTYPE_CUSTOM:
-            return ETHERTYPE_CUSTOM;
+    case GNRC_NETTYPE_CUSTOM:
+        return ETHERTYPE_CUSTOM;
 #endif
 #if IS_USED(MODULE_GNRC_SIXLOENC) && IS_USED(MODULE_GNRC_NETTYPE_SIXLOWPAN)
-        case GNRC_NETTYPE_SIXLOWPAN:
-            return ETHERTYPE_6LOENC;
+    case GNRC_NETTYPE_SIXLOWPAN:
+        return ETHERTYPE_6LOENC;
 #endif
 #if IS_USED(MODULE_GNRC_NETTYPE_IPV6)
-        case GNRC_NETTYPE_IPV6:
-            return ETHERTYPE_IPV6;
+    case GNRC_NETTYPE_IPV6:
+        return ETHERTYPE_IPV6;
 #endif
 #if IS_USED(MODULE_GNRC_NETTYPE_CCN)
-        case GNRC_NETTYPE_CCN:
-            return ETHERTYPE_NDN;
+    case GNRC_NETTYPE_CCN:
+        return ETHERTYPE_NDN;
 #endif
 #if IS_USED(MODULE_GNRC_NETTYPE_NDN)
-        case GNRC_NETTYPE_NDN:
-            return ETHERTYPE_NDN;
+    case GNRC_NETTYPE_NDN:
+        return ETHERTYPE_NDN;
 #endif
-        default:
-            return ETHERTYPE_UNKNOWN;
+    default:
+        return ETHERTYPE_UNKNOWN;
     }
 }
 
@@ -221,33 +226,33 @@ static inline gnrc_nettype_t gnrc_nettype_from_protnum(uint8_t num)
 {
     switch (num) {
 #if IS_USED(MODULE_GNRC_NETTYPE_ICMPV6)
-        case PROTNUM_ICMPV6:
-            return GNRC_NETTYPE_ICMPV6;
+    case PROTNUM_ICMPV6:
+        return GNRC_NETTYPE_ICMPV6;
 #endif
 #if IS_USED(MODULE_GNRC_NETTYPE_IPV6)
-        case PROTNUM_IPV6:
-            return GNRC_NETTYPE_IPV6;
+    case PROTNUM_IPV6:
+        return GNRC_NETTYPE_IPV6;
 #endif
 #if IS_USED(MODULE_GNRC_NETTYPE_TCP)
-        case PROTNUM_TCP:
-            return GNRC_NETTYPE_TCP;
+    case PROTNUM_TCP:
+        return GNRC_NETTYPE_TCP;
 #endif
 #if IS_USED(MODULE_GNRC_NETTYPE_UDP)
-        case PROTNUM_UDP:
-            return GNRC_NETTYPE_UDP;
+    case PROTNUM_UDP:
+        return GNRC_NETTYPE_UDP;
 #endif
 #if IS_USED(MODULE_GNRC_NETTYPE_IPV6_EXT)
-        case PROTNUM_IPV6_EXT_HOPOPT:
-        case PROTNUM_IPV6_EXT_DST:
-        case PROTNUM_IPV6_EXT_RH:
-        case PROTNUM_IPV6_EXT_FRAG:
-        case PROTNUM_IPV6_EXT_AH:
-        case PROTNUM_IPV6_EXT_ESP:
-        case PROTNUM_IPV6_EXT_MOB:
-            return GNRC_NETTYPE_IPV6_EXT;
+    case PROTNUM_IPV6_EXT_HOPOPT:
+    case PROTNUM_IPV6_EXT_DST:
+    case PROTNUM_IPV6_EXT_RH:
+    case PROTNUM_IPV6_EXT_FRAG:
+    case PROTNUM_IPV6_EXT_AH:
+    case PROTNUM_IPV6_EXT_ESP:
+    case PROTNUM_IPV6_EXT_MOB:
+        return GNRC_NETTYPE_IPV6_EXT;
 #endif
-        default:
-            return GNRC_NETTYPE_UNDEF;
+    default:
+        return GNRC_NETTYPE_UNDEF;
     }
 }
 
@@ -266,23 +271,23 @@ static inline uint8_t gnrc_nettype_to_protnum(gnrc_nettype_t type)
 {
     switch (type) {
 #if IS_USED(MODULE_GNRC_NETTYPE_IPV6)
-        case GNRC_NETTYPE_IPV6:
-            return PROTNUM_IPV6;
+    case GNRC_NETTYPE_IPV6:
+        return PROTNUM_IPV6;
 #endif
 #if IS_USED(MODULE_GNRC_NETTYPE_ICMPV6)
-        case GNRC_NETTYPE_ICMPV6:
-            return PROTNUM_ICMPV6;
+    case GNRC_NETTYPE_ICMPV6:
+        return PROTNUM_ICMPV6;
 #endif
 #if IS_USED(MODULE_GNRC_NETTYPE_TCP)
-        case GNRC_NETTYPE_TCP:
-            return PROTNUM_TCP;
+    case GNRC_NETTYPE_TCP:
+        return PROTNUM_TCP;
 #endif
 #if IS_USED(MODULE_GNRC_NETTYPE_UDP)
-        case GNRC_NETTYPE_UDP:
-            return PROTNUM_UDP;
+    case GNRC_NETTYPE_UDP:
+        return PROTNUM_UDP;
 #endif
-        default:
-            return PROTNUM_RESERVED;
+    default:
+        return PROTNUM_RESERVED;
     }
 }
 
