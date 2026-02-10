@@ -13,6 +13,7 @@
  */
 
 #include "net/gnrc/netapi.h"
+#include "net/gnrc/netreg.h"
 #include <assert.h>
 
 #include "sched.h"
@@ -95,6 +96,10 @@ void gnrc_sixlowpan_dispatch_send(gnrc_pktsnip_t *pkt, void *context,
 {
     (void)context;
     (void)page;
+#if IS_USED(MODULE_GNRC_NETTYPE_SIXLOWPAN_PRENETIF)
+    // Keep the packet in this thread to send it to a second location afterwards
+    gnrc_pktbuf_hold(pkt, 1);
+#endif
     assert(pkt->type == GNRC_NETTYPE_NETIF);
     gnrc_netif_hdr_t *hdr = pkt->data;
     if (gnrc_netif_send(gnrc_netif_get_by_pid(hdr->if_pid), pkt) < 1) {
@@ -106,7 +111,8 @@ void gnrc_sixlowpan_dispatch_send(gnrc_pktsnip_t *pkt, void *context,
 #if IS_USED(MODULE_GNRC_NETTYPE_SIXLOWPAN_PRENETIF)
     // Use a custom nettype to grab the packet after processing from sixlowpan module, avoiding having to intercept using a netif
     // Demux on the interface pid in the case of multiple radios
-    if (!gnrc_netapi_dispatch_send(GNRC_NETTYPE_SIXLOWPAN_PRENETIF, hdr->if_pid, pkt)) {
+    DEBUG("6lo: Passing a packet to prenetif listeners\n");
+    if (!gnrc_netapi_dispatch_send(GNRC_NETTYPE_SIXLOWPAN_PRENETIF, GNRC_NETREG_DEMUX_CTX_ALL, pkt)) {
         DEBUG("6lo: No receivers for PRENETIF packet found\n");
         gnrc_pktbuf_release(pkt);
     }
