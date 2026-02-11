@@ -9,6 +9,8 @@
 #include "net/gnrc/srv6/srh.h"
 #include "net/gnrc/icmpv6/echo.h"
 #include "net/protnum.h"
+#include "net/gnrc/udp.h"
+#include "net/udp.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -47,7 +49,7 @@ static int _srv6_ping(int argc, char **argv)
     }
 
     gnrc_srv6_srh_t *srh = srh_snip->data;
-    srh->nh = PROTNUM_ICMPV6;
+    srh->nh = PROTNUM_UDP;
     srh->len = (srh_size - 8) / 8;  // length in 8-octet units, excluding first 8
     srh->type = IPV6_EXT_RH_TYPE_SRV6;
     srh->seg_left = num_segments - 1;  // segments left should not include current destination
@@ -72,16 +74,26 @@ static int _srv6_ping(int argc, char **argv)
     // initial IPv6 destination is the first hop
     ipv6_addr_t ipv6_dest = segments[srh->last_entry];
 
-    // allocate ICMPv6 echo request
-    static uint16_t seq = 1;
-    gnrc_pktsnip_t *pkt = gnrc_icmpv6_echo_build(ICMPV6_ECHO_REQ, 0, seq++, NULL, 0); // TODO: hannah 26-01-14 replace with udp
-    if (pkt == NULL) {
-        printf("Failed to allocate ICMPv6 echo\n");
+    // allocate udp request
+    uint8_t udp_payload[] = "hello? who is it?";
+    gnrc_pktsnip_t *payload_snip = gnrc_pktbuf_add(NULL, udp_payload, sizeof(udp_payload) - 1, GNRC_NETTYPE_UNDEF);
+    if (payload_snip == NULL) {
+        printf("Failed to allocate UDP payload\n");
         gnrc_pktbuf_release(srh_snip);
         return 1;
     }
+    // build UDP header
+    uint16_t src_port = 12345;
+    uint16_t dst_port = 54321;
+    gnrc_pktsnip_t *pkt = gnrc_udp_hdr_build(payload_snip, src_port, dst_port);
+    if (pkt == NULL) {
+        printf("Failed to allocate UDP packet\n");
+        gnrc_pktbuf_release(srh_snip);
+        gnrc_pktbuf_release(payload_snip);
+        return 1;
+    }
 
-    // chain packets: SRH -> ICMP (SRH encapsulates the ICMP payload)
+    // chain packets: SRH -> UDP (SRH encapsulates the UDP payload)
     srh_snip->next = pkt;
 
     // add IPv6 header w/ first segment as dest
@@ -94,7 +106,7 @@ static int _srv6_ping(int argc, char **argv)
     } 
     pkt = ipv6_snip;
 
-    // send packet to IPv6 layer for transmission
+    // send packet to IPv6 layer for transmission 
     if (!gnrc_netapi_dispatch_send(GNRC_NETTYPE_IPV6, GNRC_NETREG_DEMUX_CTX_ALL, pkt)) {
         printf("Failed to send packet\n");
         gnrc_pktbuf_release(pkt);
@@ -114,7 +126,7 @@ int main(void)
 {
     // initialize message queue for the main thread
     msg_init_queue(_main_msg_queue, MAIN_QUEUE_SIZE);
-
+    gnrc_udp_init();
     
     // only show icmpv6 echo requests (gets result of srv6_ping) 
     gnrc_netreg_entry_t dump_echo = GNRC_NETREG_ENTRY_INIT_PID(ICMPV6_ECHO_REQ,

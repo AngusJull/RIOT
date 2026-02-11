@@ -19,6 +19,7 @@
 
 #include "net/ipv6/ext/rh.h"
 #include "net/gnrc.h"
+#include "net/gnrc/netreg.h"
 
 #include "net/gnrc/icmpv6/error.h"
 #include "net/gnrc/srv6/srh.h"
@@ -75,9 +76,10 @@ int gnrc_ipv6_ext_rh_process(gnrc_pktsnip_t *pkt)
     void *err_ptr = NULL;
 
     /* check seg_left early to avoid duplicating the packet */
-    if (ext->seg_left == 0) {
-        return res;
-    }
+    // if (ext->seg_left == 0) {
+    //     DEBUG("DEBUG: seg_left is 0, returning AT_DST. ext->nh = %u\n", ext->nh);
+    //     return res;
+    // }
     ipv6 = gnrc_pktsnip_search_type(pkt, GNRC_NETTYPE_IPV6);
     assert(ipv6 != NULL);
     hdr = ipv6->data;
@@ -89,7 +91,7 @@ int gnrc_ipv6_ext_rh_process(gnrc_pktsnip_t *pkt)
 #endif
 #ifdef MODULE_GNRC_SRV6_SRH
     case IPV6_EXT_RH_TYPE_SRV6:
-        printf("SRv6 packet recieved. Processing.");
+        printf("IPv6 ext RH: SRv6 packet recieved. Processing.\n");
         res = gnrc_srv6_srh_process(hdr, (gnrc_srv6_srh_t *)ext, &err_ptr);
         break;
 #endif
@@ -103,6 +105,11 @@ int gnrc_ipv6_ext_rh_process(gnrc_pktsnip_t *pkt)
         _forward_pkt(pkt, hdr);
         break;
     case GNRC_IPV6_EXT_RH_AT_DST:
+        printf("IPv6 ext RH: Packet is at final destination. Unpacking...\n");
+        if (ext->nh == PROTNUM_UDP) {
+            printf("IPv6 ext RH: UDP packet detected. Dispatching to gnrc UDP handler.\n");
+            gnrc_netapi_dispatch_receive(GNRC_NETTYPE_UDP, GNRC_NETREG_DEMUX_CTX_ALL, pkt);
+        }
         break;
     default:
 #ifdef MODULE_GNRC_ICMPV6_ERROR
