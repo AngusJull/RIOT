@@ -1,4 +1,3 @@
-// For debug
 #include "net/gnrc.h"
 #include "net/gnrc/pktdump.h"
 #include "net/gnrc/pktbuf.h"
@@ -20,6 +19,10 @@
 #include "shell.h"
 #include "msg.h"
 
+#include "../sx126x_metrics/display.h"
+#include "../sx126x_metrics/stats.h"
+#include "../sx126x_metrics/pkt_capture.h"
+
 
 #define SERVER_PORT     54321
 #define BUF_SIZE        128
@@ -27,6 +30,21 @@ static char gnrc_udp_server_stack[THREAD_STACKSIZE_DEFAULT];
 
 #define MAIN_QUEUE_SIZE (8)
 static msg_t _main_msg_queue[MAIN_QUEUE_SIZE];
+
+// Must be powers of two (limitation of tsrb)
+#define MAX_BYTES_NETSTAT_RECORDS (2 << 12)
+#define MAX_BYTES_POWER_RECORDS   (2 << 12)
+#define MAX_BYTES_CAPTURE_RECORDS (2 << 10)
+
+// Allocate statically, so that we don't need to use a memory allocator/linked list
+static uint8_t netstat_buffer[MAX_BYTES_NETSTAT_RECORDS];
+static uint8_t power_buffer[MAX_BYTES_POWER_RECORDS];
+static uint8_t capture_buffer[MAX_BYTES_CAPTURE_RECORDS];
+
+// use thread safe buffers for inter-thread communication and data storage
+static tsrb_t netstat_ringbuffer;
+static tsrb_t power_ringbuffer;
+static tsrb_t capture_ringbuffer;
 
 
 static void debug_print_snip_chain(const char *msg, gnrc_pktsnip_t *pkt) {
@@ -151,7 +169,7 @@ static int _srv6_ping(int argc, char **argv)
     // initial IPv6 destination is the first hop
     ipv6_addr_t ipv6_dest = segments[srh->last_entry];
 
-        // set real source address for correct checksum
+    // get current network config for source address
     gnrc_netif_t *netif = gnrc_netif_iter(NULL);
     ipv6_addr_t addrs[CONFIG_GNRC_NETIF_IPV6_ADDRS_NUMOF];
     int num_addrs = gnrc_netif_ipv6_addrs_get(netif, addrs, sizeof(addrs));
@@ -164,9 +182,9 @@ static int _srv6_ping(int argc, char **argv)
                 break;
             }
         }
-    } else { printf("No source addresses found.\n"); }
+    } else { printf("No source address found. Allowing automatic source population, meaning checksum will be invalid.\n"); }
 
-    // add IPv6 header w/ first segment as dest
+    // add IPv6 header w/ first segment as dest and myself as source
     // gnrc_ipv6_hdr_build will auto-set nh field from next snip type
     gnrc_pktsnip_t *ipv6_snip = gnrc_ipv6_hdr_build(srh_snip, &ipv6_src, &ipv6_dest);
     if (ipv6_snip == NULL) {
@@ -194,9 +212,9 @@ static int _srv6_ping(int argc, char **argv)
         printf("Failed to calculate UDP checksum\n");
     }
     gnrc_pktbuf_release(pseudo_ipv6_snip);
-    
-    debug_print_snip_chain("before sending packet", pkt);
+
     // send packet to IPv6 layer for transmission 
+    debug_print_snip_chain("before sending packet", pkt);
     if (!gnrc_netapi_dispatch_send(GNRC_NETTYPE_IPV6, GNRC_NETREG_DEMUX_CTX_ALL, pkt)) {
         printf("Failed to send packet\n");
         gnrc_pktbuf_release(pkt);
@@ -218,15 +236,18 @@ int main(void)
     msg_init_queue(_main_msg_queue, MAIN_QUEUE_SIZE);
     gnrc_udp_init();
     
-    // // only show icmpv6 echo requests (gets result of srv6_ping) 
-    // gnrc_netreg_entry_t dump_echo = GNRC_NETREG_ENTRY_INIT_PID(GNRC_NETTYPE_UDP,
-    //                                                             gnrc_pktdump_pid);
-    // gnrc_netreg_register(GNRC_NETTYPE_ICMPV6, &dump_echo);
-
     (void)puts("Welcome to RIOT!");
 
     // init udp server for dest
     gnrc_udp_server_start();
+
+    tsrb_init(&netstat_ringbuffer, (unsigned char *)netstat_buffer, sizeof(netstat_buffer));
+    tsrb_init(&power_ringbuffer, (unsigned char *)power_buffer, sizeof(power_buffer));
+    tsrb_init(&capture_ringbuffer, (unsigned char *)capture_buffer, sizeof(capture_buffer));
+
+    init_stats_thread(&(struct stats_thread_args){ .power_tsrb = &power_ringbuffer, .netstat_tsrb = &netstat_ringbuffer });
+    init_display_thread(&(struct display_thread_args){ .power_ringbuffer = &power_ringbuffer, .netstat_ringbuffer = &netstat_ringbuffer, .capture_ringbuffer = &capture_ringbuffer });
+    init_pkt_capture_thread(&(struct pkt_capture_thread_args){ .capture_tsrb = &capture_ringbuffer });
 
     char line_buf[SHELL_DEFAULT_BUFSIZE];
     shell_run(shell_commands, line_buf, SHELL_DEFAULT_BUFSIZE);
