@@ -11,6 +11,8 @@
 #include "net/protnum.h"
 #include "net/gnrc/udp.h"
 #include "net/udp.h"
+#include "net/gnrc/netreg.h"
+#include "thread.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -18,8 +20,64 @@
 #include "shell.h"
 #include "msg.h"
 
+
+#define SERVER_PORT     54321
+#define BUF_SIZE        128
+static char gnrc_udp_server_stack[THREAD_STACKSIZE_DEFAULT];
+
 #define MAIN_QUEUE_SIZE (8)
 static msg_t _main_msg_queue[MAIN_QUEUE_SIZE];
+
+
+static void debug_print_snip_chain(const char *msg, gnrc_pktsnip_t *pkt) {
+    printf("[SRv6 example] %s: snip chain: ", msg);
+    while (pkt) {
+        printf("[%d:%u]->", pkt->type, (unsigned)pkt->size);
+        pkt = pkt->next;
+    }
+    puts("NULL");
+}
+
+static void *gnrc_udp_server_thread(void *arg)
+{
+    (void)arg;
+    msg_t msg;
+    gnrc_netreg_entry_t entry = GNRC_NETREG_ENTRY_INIT_PID(SERVER_PORT, thread_getpid());
+
+    static msg_t server_msg_queue[MAIN_QUEUE_SIZE];
+    msg_init_queue(server_msg_queue, MAIN_QUEUE_SIZE);
+
+    // register to recieve UDP packets from server port
+    gnrc_netreg_register(GNRC_NETTYPE_UDP, &entry);
+
+    puts("GNRC UDP server started.");
+
+    while (1) {
+        msg_receive(&msg);
+        if (msg.type == GNRC_NETAPI_MSG_TYPE_RCV) {
+            gnrc_pktsnip_t *pkt = (gnrc_pktsnip_t *)msg.content.ptr;
+            // extract udp payload
+            gnrc_pktsnip_t *payload = gnrc_pktsnip_search_type(pkt, GNRC_NETTYPE_UNDEF);
+            if (payload) {
+                size_t len = payload->size;
+                char buf[BUF_SIZE];
+                if (len > BUF_SIZE) len = BUF_SIZE;
+                memcpy(buf, payload->data, len);
+                printf("Received payload of %u bytes: <\t%.*s\t>\n", (unsigned)len, (int)len, buf);
+            } else {
+                printf("No payload found in recieved packet.\n");
+            }
+            gnrc_pktbuf_release(pkt);
+        }
+    }
+    return NULL;
+}
+
+void gnrc_udp_server_start(void)
+{
+    thread_create(gnrc_udp_server_stack, sizeof(gnrc_udp_server_stack),
+                  THREAD_PRIORITY_MAIN - 1, 0, gnrc_udp_server_thread, NULL, "gnrc_udp_srv");
+}
 
 static int _srv6_ping(int argc, char **argv)
 {
@@ -40,11 +98,31 @@ static int _srv6_ping(int argc, char **argv)
         return 1;
     }
 
+    // allocate udp request
+    uint8_t udp_payload[] = "hello world";
+    gnrc_pktsnip_t *payload_snip = gnrc_pktbuf_add(NULL, udp_payload, sizeof(udp_payload) - 1, GNRC_NETTYPE_UNDEF);
+    if (payload_snip == NULL) {
+        printf("Failed to allocate UDP payload\n");
+        return 1;
+    }
+    // build UDP header
+    uint16_t src_port = 12345;
+    uint16_t dst_port = SERVER_PORT;
+    gnrc_pktsnip_t *udp_snip = gnrc_udp_hdr_build(payload_snip, src_port, dst_port);
+    if (udp_snip == NULL) {
+        printf("Failed to allocate UDP packet\n");
+        gnrc_pktbuf_release(payload_snip);
+        return 1;
+    }
+    udp_hdr_t *udp = udp_snip->data;
+    udp->length = byteorder_htons(gnrc_pkt_len(udp_snip));
+
     // allocate packet buffer for SRH
     size_t srh_size = sizeof(gnrc_srv6_srh_t) + num_segments * sizeof(ipv6_addr_t);
-    gnrc_pktsnip_t *srh_snip = gnrc_pktbuf_add(NULL, NULL, srh_size, GNRC_NETTYPE_IPV6_EXT);
+    gnrc_pktsnip_t *srh_snip = gnrc_pktbuf_add(udp_snip, NULL, srh_size, GNRC_NETTYPE_IPV6_EXT);
     if (srh_snip == NULL) {
         printf("Failed to allocate SRH\n");
+        gnrc_pktbuf_release(udp_snip);
         return 1;
     }
 
@@ -66,7 +144,6 @@ static int _srv6_ping(int argc, char **argv)
         int seg_idx = num_segments-1 - i;      // fill from the end backwards
         if (ipv6_addr_from_str(&segments[seg_idx], argv[2 + i]) == NULL) {
             printf("Invalid segment address %s\n", argv[2 + i]);
-            gnrc_pktbuf_release(srh_snip);
             return 1;
         }
     }
@@ -74,38 +151,51 @@ static int _srv6_ping(int argc, char **argv)
     // initial IPv6 destination is the first hop
     ipv6_addr_t ipv6_dest = segments[srh->last_entry];
 
-    // allocate udp request
-    uint8_t udp_payload[] = "hello? who is it?";
-    gnrc_pktsnip_t *payload_snip = gnrc_pktbuf_add(NULL, udp_payload, sizeof(udp_payload) - 1, GNRC_NETTYPE_UNDEF);
-    if (payload_snip == NULL) {
-        printf("Failed to allocate UDP payload\n");
-        gnrc_pktbuf_release(srh_snip);
-        return 1;
-    }
-    // build UDP header
-    uint16_t src_port = 12345;
-    uint16_t dst_port = 54321;
-    gnrc_pktsnip_t *pkt = gnrc_udp_hdr_build(payload_snip, src_port, dst_port);
-    if (pkt == NULL) {
-        printf("Failed to allocate UDP packet\n");
-        gnrc_pktbuf_release(srh_snip);
-        gnrc_pktbuf_release(payload_snip);
-        return 1;
-    }
-
-    // chain packets: SRH -> UDP (SRH encapsulates the UDP payload)
-    srh_snip->next = pkt;
+        // set real source address for correct checksum
+    gnrc_netif_t *netif = gnrc_netif_iter(NULL);
+    ipv6_addr_t addrs[CONFIG_GNRC_NETIF_IPV6_ADDRS_NUMOF];
+    int num_addrs = gnrc_netif_ipv6_addrs_get(netif, addrs, sizeof(addrs));
+    ipv6_addr_t ipv6_src;
+    if (num_addrs > 0) {
+        ipv6_src = addrs[0];
+        for (int i = 0; i < (int)(num_addrs / sizeof(ipv6_addr_t)); i++) {
+            if (ipv6_addr_is_global(&addrs[i])) {
+                ipv6_src = addrs[i];
+                break;
+            }
+        }
+    } else { printf("No source addresses found.\n"); }
 
     // add IPv6 header w/ first segment as dest
     // gnrc_ipv6_hdr_build will auto-set nh field from next snip type
-    gnrc_pktsnip_t *ipv6_snip = gnrc_ipv6_hdr_build(srh_snip, NULL, &ipv6_dest);
+    gnrc_pktsnip_t *ipv6_snip = gnrc_ipv6_hdr_build(srh_snip, &ipv6_src, &ipv6_dest);
     if (ipv6_snip == NULL) {
         printf("Failed to allocate IPv6 header\n");
         gnrc_pktbuf_release(srh_snip);
         return 1;
     } 
-    pkt = ipv6_snip;
 
+    gnrc_pktsnip_t *pkt = ipv6_snip;
+
+    // create pseudo IPv6 header with final dest for checksum
+    gnrc_pktsnip_t *pseudo_ipv6_snip = gnrc_pktbuf_add(NULL, ipv6_snip->data,
+                                                        ipv6_snip->size,
+                                                        GNRC_NETTYPE_IPV6);
+    if (pseudo_ipv6_snip == NULL) {
+        printf("Failed to allocate pseudo IPv6 header\n");
+        gnrc_pktbuf_release(pkt);
+        return 1;
+    }
+    ipv6_hdr_t *pseudo_hdr = pseudo_ipv6_snip->data;
+    memcpy(&pseudo_hdr->dst, &dest, sizeof(ipv6_addr_t));
+
+    // calculate udp checksum
+    if (gnrc_udp_calc_csum(udp_snip, pseudo_ipv6_snip) < 0) {
+        printf("Failed to calculate UDP checksum\n");
+    }
+    gnrc_pktbuf_release(pseudo_ipv6_snip);
+    
+    debug_print_snip_chain("before sending packet", pkt);
     // send packet to IPv6 layer for transmission 
     if (!gnrc_netapi_dispatch_send(GNRC_NETTYPE_IPV6, GNRC_NETREG_DEMUX_CTX_ALL, pkt)) {
         printf("Failed to send packet\n");
@@ -118,7 +208,7 @@ static int _srv6_ping(int argc, char **argv)
 }
 
 static const shell_command_t shell_commands[] = {
-    { "srv6_ping", "Send ICMPv6 echo with SRv6 SRH", _srv6_ping },
+    { "srv6_ping", "Send UDP message with SRv6 SRH", _srv6_ping },
     { NULL, NULL, NULL }
 };
 
@@ -128,12 +218,15 @@ int main(void)
     msg_init_queue(_main_msg_queue, MAIN_QUEUE_SIZE);
     gnrc_udp_init();
     
-    // only show icmpv6 echo requests (gets result of srv6_ping) 
-    gnrc_netreg_entry_t dump_echo = GNRC_NETREG_ENTRY_INIT_PID(ICMPV6_ECHO_REQ,
-                                                                gnrc_pktdump_pid);
-    gnrc_netreg_register(GNRC_NETTYPE_ICMPV6, &dump_echo);
+    // // only show icmpv6 echo requests (gets result of srv6_ping) 
+    // gnrc_netreg_entry_t dump_echo = GNRC_NETREG_ENTRY_INIT_PID(GNRC_NETTYPE_UDP,
+    //                                                             gnrc_pktdump_pid);
+    // gnrc_netreg_register(GNRC_NETTYPE_ICMPV6, &dump_echo);
 
     (void)puts("Welcome to RIOT!");
+
+    // init udp server for dest
+    gnrc_udp_server_start();
 
     char line_buf[SHELL_DEFAULT_BUFSIZE];
     shell_run(shell_commands, line_buf, SHELL_DEFAULT_BUFSIZE);
