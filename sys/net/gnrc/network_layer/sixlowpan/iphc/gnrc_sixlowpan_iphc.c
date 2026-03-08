@@ -456,6 +456,23 @@ static size_t _iphc_ipv6_decode(const uint8_t *iphc_hdr,
 }
 
 #ifdef MODULE_GNRC_SIXLOWPAN_IPHC_NHC
+
+static bool _remove_header(gnrc_pktsnip_t *pkt, gnrc_pktsnip_t *hdr,
+                           size_t exp_hdr_size)
+{
+    if (hdr->size > exp_hdr_size) {
+        hdr = gnrc_pktbuf_mark(hdr, exp_hdr_size,
+                               GNRC_NETTYPE_UNDEF);
+
+        if (hdr == NULL) {
+            DEBUG("6lo iphc: unable to remove compressed header\n");
+            return false;
+        }
+    }
+    gnrc_pktbuf_remove_snip(pkt, hdr);
+    return true;
+}
+
 static size_t _iphc_nhc_ghc_decode(gnrc_pktsnip_t *sixlo, size_t offset,
                                    size_t *prev_nh_offset,
                                    gnrc_pktsnip_t *ipv6,
@@ -1587,22 +1604,6 @@ static inline size_t iphc_nhc_udp_encode(uint8_t *nhc_data,
     nhc_data[nhc_len++] = udp_hdr->checksum.u8[1];
 
     return nhc_len;
-}
-
-static bool _remove_header(gnrc_pktsnip_t *pkt, gnrc_pktsnip_t *hdr,
-                           size_t exp_hdr_size)
-{
-    if (hdr->size > exp_hdr_size) {
-        hdr = gnrc_pktbuf_mark(hdr, exp_hdr_size,
-                               GNRC_NETTYPE_UNDEF);
-
-        if (hdr == NULL) {
-            DEBUG("6lo iphc: unable to remove compressed header\n");
-            return false;
-        }
-    }
-    gnrc_pktbuf_remove_snip(pkt, hdr);
-    return true;
 }
 
 static ssize_t _nhc_ipv6_encode_snip(gnrc_pktsnip_t *pkt,

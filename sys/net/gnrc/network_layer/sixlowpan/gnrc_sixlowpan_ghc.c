@@ -17,7 +17,7 @@
 
 #include <string.h>
 #include <errno.h>
-#include "net/gnrc/sixlowpan/ghc.h"
+#include "sys/include/net/gnrc/sixlowan/ghc.h"
 
 #define ENABLE_DEBUG 0
 #include "debug.h"
