@@ -84,11 +84,12 @@ USEMODULE += netstats_ipv6
 # use IEEE802154 for sx126x instead of LoRa or RAW modes
 USEMODULE += sx126x_ieee802154
 
+USEMODULE += gnrc_sixlowpan_iphc_nhc
 # We use only the lower layers of the GNRC network stack, hence, we can
 # reduce the size of the packet buffer a bit
 # Set GNRC_PKTBUF_SIZE via CFLAGS if not being set via Kconfig.
 ifndef CONFIG_GNRC_PKTBUF_SIZE
-	CFLAGS += -DCONFIG_GNRC_PKTBUF_SIZE=1024
+	CFLAGS += -DCONFIG_GNRC_PKTBUF_SIZE=2048
 endif
 
 CFLAGS += -DCONFIG_GNRC_IPV6_FORWARDING=1

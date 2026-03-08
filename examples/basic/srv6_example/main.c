@@ -1,4 +1,3 @@
-// For debug
 #include "net/gnrc.h"
 #include "net/gnrc/pktdump.h"
 #include "net/gnrc/pktbuf.h"
@@ -8,6 +7,7 @@
 #include "net/gnrc/ipv6/hdr.h"
 #include "net/gnrc/srv6/srh.h"
 #include "net/gnrc/icmpv6/echo.h"
+#include "net/gnrc/sixlowpan/ghc.h"
 #include "net/protnum.h"
 #include "net/gnrc/udp.h"
 #include "net/udp.h"
@@ -119,14 +119,16 @@ static int _srv6_ping(int argc, char **argv)
 
     // allocate packet buffer for SRH
     size_t srh_size = sizeof(gnrc_srv6_srh_t) + num_segments * sizeof(ipv6_addr_t);
-    gnrc_pktsnip_t *srh_snip = gnrc_pktbuf_add(udp_snip, NULL, srh_size, GNRC_NETTYPE_IPV6_EXT);
-    if (srh_snip == NULL) {
-        printf("Failed to allocate SRH\n");
+
+    // build raw SRH on the stack
+    uint8_t raw_srh[sizeof(gnrc_srv6_srh_t) + 8 * sizeof(ipv6_addr_t)];
+    if (srh_size > sizeof(raw_srh)) {
+        printf("Too many segments (max 8)\n");
         gnrc_pktbuf_release(udp_snip);
         return 1;
     }
+    gnrc_srv6_srh_t *srh = (gnrc_srv6_srh_t *)raw_srh;
 
-    gnrc_srv6_srh_t *srh = srh_snip->data;
     srh->nh = PROTNUM_UDP;
     srh->len = (srh_size - 8) / 8;  // length in 8-octet units, excluding first 8
     srh->type = IPV6_EXT_RH_TYPE_SRV6;
@@ -134,7 +136,6 @@ static int _srv6_ping(int argc, char **argv)
     srh->last_entry = num_segments - 1;
     srh->flags = 0;
     srh->tag = 0;
-
 
     ipv6_addr_t *segments = (ipv6_addr_t *)(srh + 1);
     // segment_list[0] = final destination; segment_list[last_entry] = first hop
@@ -144,6 +145,7 @@ static int _srv6_ping(int argc, char **argv)
         int seg_idx = num_segments-1 - i;      // fill from the end backwards
         if (ipv6_addr_from_str(&segments[seg_idx], argv[2 + i]) == NULL) {
             printf("Invalid segment address %s\n", argv[2 + i]);
+            gnrc_pktbuf_release(udp_snip);
             return 1;
         }
     }
@@ -151,11 +153,12 @@ static int _srv6_ping(int argc, char **argv)
     // initial IPv6 destination is the first hop
     ipv6_addr_t ipv6_dest = segments[srh->last_entry];
 
-        // set real source address for correct checksum
+    // get current network config for source address
     gnrc_netif_t *netif = gnrc_netif_iter(NULL);
     ipv6_addr_t addrs[CONFIG_GNRC_NETIF_IPV6_ADDRS_NUMOF];
     int num_addrs = gnrc_netif_ipv6_addrs_get(netif, addrs, sizeof(addrs));
     ipv6_addr_t ipv6_src;
+    memset(&ipv6_src, 0, sizeof(ipv6_src));
     if (num_addrs > 0) {
         ipv6_src = addrs[0];
         for (int i = 0; i < (int)(num_addrs / sizeof(ipv6_addr_t)); i++) {
@@ -164,9 +167,46 @@ static int _srv6_ping(int argc, char **argv)
                 break;
             }
         }
-    } else { printf("No source addresses found.\n"); }
+    } else { printf("No source address found. Allowing automatic source population, meaning checksum will be invalid.\n"); }
 
-    // add IPv6 header w/ first segment as dest
+    // compress segment list
+    ipv6_hdr_t tmp_ipv6;
+    memset(&tmp_ipv6, 0, sizeof(tmp_ipv6));
+    memcpy(&tmp_ipv6.src, &ipv6_src, sizeof(ipv6_addr_t));
+    memcpy(&tmp_ipv6.dst, &ipv6_dest, sizeof(ipv6_addr_t));
+
+    uint8_t compressed_segs[256];
+    ssize_t comp_size = gnrc_sixlowpan_ghc_encode_srh(
+                        compressed_segs, sizeof(compressed_segs),
+                        raw_srh + sizeof(gnrc_srv6_srh_t),
+                        srh_size - sizeof(gnrc_srv6_srh_t),
+                        &tmp_ipv6
+                        );
+
+    if (comp_size <= 0) {
+        printf("GHC compression failed (error %d)\n", (int)comp_size);
+        gnrc_pktbuf_release(udp_snip);
+        return 1;
+    }
+    printf("[GHC] segment list: %u -> %d bytes\n",
+           (unsigned)(srh_size - sizeof(gnrc_srv6_srh_t)), (int)comp_size);
+
+    // allocate packet buffer for compressed SRH (header + compressed segments)
+    size_t comp_srh_size = sizeof(gnrc_srv6_srh_t) + (size_t)comp_size;
+    gnrc_pktsnip_t *srh_snip = gnrc_pktbuf_add(udp_snip, NULL, comp_srh_size, GNRC_NETTYPE_IPV6_EXT);
+    if (srh_snip == NULL) {
+        printf("Failed to allocate SRH\n");
+        gnrc_pktbuf_release(udp_snip);
+        return 1;
+    }
+    memcpy(srh_snip->data, raw_srh, sizeof(gnrc_srv6_srh_t));
+
+    // set GHC flag for SRH compression
+    ((gnrc_srv6_srh_t *)srh_snip->data)->flags |= GNRC_SRV6_SRH_FLAG_GHC;
+    memcpy((uint8_t *)srh_snip->data + sizeof(gnrc_srv6_srh_t),
+           compressed_segs, (size_t)comp_size);
+
+    // add IPv6 header w/ first segment as dest and myself as source
     // gnrc_ipv6_hdr_build will auto-set nh field from next snip type
     gnrc_pktsnip_t *ipv6_snip = gnrc_ipv6_hdr_build(srh_snip, &ipv6_src, &ipv6_dest);
     if (ipv6_snip == NULL) {
@@ -194,9 +234,9 @@ static int _srv6_ping(int argc, char **argv)
         printf("Failed to calculate UDP checksum\n");
     }
     gnrc_pktbuf_release(pseudo_ipv6_snip);
-    
-    debug_print_snip_chain("before sending packet", pkt);
+
     // send packet to IPv6 layer for transmission 
+    debug_print_snip_chain("before sending packet", pkt);
     if (!gnrc_netapi_dispatch_send(GNRC_NETTYPE_IPV6, GNRC_NETREG_DEMUX_CTX_ALL, pkt)) {
         printf("Failed to send packet\n");
         gnrc_pktbuf_release(pkt);
@@ -218,11 +258,6 @@ int main(void)
     msg_init_queue(_main_msg_queue, MAIN_QUEUE_SIZE);
     gnrc_udp_init();
     
-    // // only show icmpv6 echo requests (gets result of srv6_ping) 
-    // gnrc_netreg_entry_t dump_echo = GNRC_NETREG_ENTRY_INIT_PID(GNRC_NETTYPE_UDP,
-    //                                                             gnrc_pktdump_pid);
-    // gnrc_netreg_register(GNRC_NETTYPE_ICMPV6, &dump_echo);
-
     (void)puts("Welcome to RIOT!");
 
     // init udp server for dest
