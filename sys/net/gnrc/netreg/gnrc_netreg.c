@@ -255,6 +255,10 @@ int gnrc_netreg_calc_csum(gnrc_pktsnip_t *hdr, gnrc_pktsnip_t *pseudo_hdr)
          *      is needed. */
         return -EINVAL;
     }
+    /* skip if checksum was already computed (e.g. by SRv6 with pseudo-header) */
+    if (byteorder_ntohs(((udp_hdr_t *)hdr->data)->checksum) != 0) {
+        return 0;
+    }
 
     switch (hdr->type) {
 #ifdef MODULE_GNRC_ICMPV6

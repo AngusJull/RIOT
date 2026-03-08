@@ -11,6 +11,7 @@
 
 static char addr_str[IPV6_ADDR_MAX_STR_LEN];
 
+
 int gnrc_srv6_srh_process(ipv6_hdr_t *ipv6, gnrc_srv6_srh_t *rh, void **err_ptr)
 {
     // Validate segments left must not exceed the actual list size

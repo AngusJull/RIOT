@@ -16,13 +16,24 @@
 #include "mutex.h"
 #include "net/gnrc/pktbuf.h"
 #include "net/gnrc/tx_sync.h"
+#include "net/gnrc/nettype.h"
 
 #include "pktbuf_internal.h"
 
-#define ENABLE_DEBUG 0
+
+#define ENABLE_DEBUG 1
 #include "debug.h"
 
 mutex_t gnrc_pktbuf_mutex = MUTEX_INIT;
+
+static void debug_print_snip_chain(const char *msg, gnrc_pktsnip_t *pkt) {
+    DEBUG("[pktbuf] %s: snip chain: ", msg);
+    while (pkt) {
+        printf("[%d:%u]->", pkt->type, (unsigned)pkt->size);
+        pkt = pkt->next;
+    }
+    puts("NULL");
+}
 
 gnrc_pktsnip_t *gnrc_pktbuf_remove_snip(gnrc_pktsnip_t *pkt,
                                         gnrc_pktsnip_t *snip)
@@ -30,7 +41,6 @@ gnrc_pktsnip_t *gnrc_pktbuf_remove_snip(gnrc_pktsnip_t *pkt,
     pkt = gnrc_pkt_delete(pkt, snip);
     snip->next = NULL;
     gnrc_pktbuf_release(snip);
-
     return pkt;
 }
 
@@ -54,6 +64,7 @@ gnrc_pktsnip_t *gnrc_pktbuf_reverse_snips(gnrc_pktsnip_t *pkt)
         reversed = pkt;
         ptr = next;
     }
+    debug_print_snip_chain("after gnrc_pktbuf_reverse_snips", reversed);
     return reversed;
 }
 
@@ -115,7 +126,7 @@ void gnrc_pktbuf_release_error(gnrc_pktsnip_t *pkt, uint32_t err)
         else {
             pkt->users--;
         }
-        DEBUG("pktbuf: report status code %" PRIu32 "\n", err);
+        //DEBUG("pktbuf: report status code %" PRIu32 "\n", err);
         gnrc_neterr_report(pkt, err);
         pkt = tmp;
     }

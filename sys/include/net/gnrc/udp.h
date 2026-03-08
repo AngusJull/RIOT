@@ -44,7 +44,7 @@ extern "C" {
  *          the queue.
  */
 #ifndef CONFIG_GNRC_UDP_MSG_QUEUE_SIZE_EXP
-#define CONFIG_GNRC_UDP_MSG_QUEUE_SIZE_EXP (3U)
+#define CONFIG_GNRC_UDP_MSG_QUEUE_SIZE_EXP (4U)
 #endif
 
 /**

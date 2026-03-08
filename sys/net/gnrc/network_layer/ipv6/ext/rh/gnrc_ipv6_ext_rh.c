@@ -20,6 +20,7 @@
 #include "net/ipv6/ext/rh.h"
 #include "net/gnrc.h"
 #include "net/gnrc/netreg.h"
+#include "net/gnrc/nettype.h"
 
 #include "net/gnrc/icmpv6/error.h"
 #include "net/gnrc/srv6/srh.h"
@@ -32,6 +33,15 @@
 
 #define ENABLE_DEBUG 1
 #include "debug.h"
+
+static void debug_print_snip_chain(const char *msg, gnrc_pktsnip_t *pkt) {
+    DEBUG("[SRv6 SRH] %s: snip chain: ", msg);
+    while (pkt) {
+        printf("[%d:%u]->", pkt->type, (unsigned)pkt->size);
+        pkt = pkt->next;
+    }
+    puts("NULL");
+}
 
 /* unchecked precondition: hdr is gnrc_pktsnip_t::data of the
  * GNRC_NETTYPE_IPV6 snip within pkt */
@@ -92,6 +102,8 @@ int gnrc_ipv6_ext_rh_process(gnrc_pktsnip_t *pkt)
 #ifdef MODULE_GNRC_SRV6_SRH
     case IPV6_EXT_RH_TYPE_SRV6:
         printf("IPv6 ext RH: SRv6 packet recieved. Processing.\n");
+        debug_print_snip_chain("in ipv6 ext rh process", pkt);
+        printf("[DEBUG] Total pkt length: %u\n", (unsigned)gnrc_pkt_len(pkt));
         res = gnrc_srv6_srh_process(hdr, (gnrc_srv6_srh_t *)ext, &err_ptr);
         break;
 #endif
@@ -102,13 +114,24 @@ int gnrc_ipv6_ext_rh_process(gnrc_pktsnip_t *pkt)
     }
     switch (res) {
     case GNRC_IPV6_EXT_RH_FORWARDED:
+        // mark SRH as seperate from payload to preserve packet structure
+        size_t srh_len = (ext->len * 8) + 8;
+        gnrc_pktsnip_t *srh_snip = gnrc_pktbuf_mark(pkt, srh_len,
+                                                    GNRC_NETTYPE_IPV6_EXT);
+        if (srh_snip == NULL) {
+            DEBUG("ipv6_ext_rh: failed to mark SRH snip\n");
+            gnrc_pktbuf_release(pkt);
+            break;
+        }
         _forward_pkt(pkt, hdr);
         break;
     case GNRC_IPV6_EXT_RH_AT_DST:
         printf("IPv6 ext RH: Packet is at final destination. Unpacking...\n");
         if (ext->nh == PROTNUM_UDP) {
-            printf("IPv6 ext RH: UDP packet detected. Dispatching to gnrc UDP handler.\n");
-            gnrc_netapi_dispatch_receive(GNRC_NETTYPE_UDP, GNRC_NETREG_DEMUX_CTX_ALL, pkt);
+            printf("IPv6 ext RH: UDP packet detected. Should dispatch to gnrc UDP handler.\n");
+            debug_print_snip_chain("before UDP handler", pkt);
+            printf("[DEBUG] Total pkt length: %u\n", (unsigned)gnrc_pkt_len(pkt));
+            // gnrc_netapi_dispatch_receive(GNRC_NETTYPE_UDP, GNRC_NETREG_DEMUX_CTX_ALL, pkt);
         }
         break;
     default:

@@ -286,9 +286,12 @@ static gnrc_pktsnip_t *_demux(gnrc_pktsnip_t *pkt, unsigned protnum)
                 case GNRC_IPV6_EXT_RH_AT_DST:
                     /* We are the final destination of the route laid out in
                      * the routing header. So proceeds like normal packet. */
+                    DEBUG("ipv6_ext: AT_DST, marking extension header\n");
                     if (_mark_extension_header(pkt) == NULL) {
                         /* we couldn't mark the routing header though, return
                          * an error */
+                        DEBUG("ipv6_ext: failed to mark extension header\n");
+
                         return NULL;
                     }
                     break;

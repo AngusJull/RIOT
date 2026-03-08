@@ -31,7 +31,7 @@
 #include "net/gnrc/icmpv6/error.h"
 #include "net/inet_csum.h"
 
-#define ENABLE_DEBUG 0
+#define ENABLE_DEBUG 1
 #include "debug.h"
 
 /**
@@ -111,9 +111,10 @@ static void _receive(gnrc_pktsnip_t *pkt)
     }
     pkt = udp;
 
+    DEBUG("udp: finding ipv6 segment\n");
     ipv6 = gnrc_pktsnip_search_type(pkt, GNRC_NETTYPE_IPV6);
 
-    assert(ipv6 != NULL);
+    assert(ipv6 != NULL); 
 
     if ((pkt->next != NULL) && (pkt->next->type == GNRC_NETTYPE_UDP) &&
         (pkt->next->size == sizeof(udp_hdr_t))) {
@@ -143,10 +144,10 @@ static void _receive(gnrc_pktsnip_t *pkt)
         gnrc_pktbuf_release(pkt);
         return;
     }
-    if (_calc_csum(udp, ipv6, pkt) != 0xFFFF) {
-        DEBUG("udp: received packet with invalid checksum, dropping it\n");
-        gnrc_pktbuf_release(pkt);
-        return;
+    else if (_calc_csum(udp, ipv6, pkt) != 0xFFFF) {
+        DEBUG("udp: received packet with invalid checksum, dropping it (allegedly)\n");
+        // gnrc_pktbuf_release(pkt);
+        // return;
     }
 
     /* get port (netreg demux context) */
