@@ -59,7 +59,7 @@ static const uint8_t ghc_static_dict[16] = {
 
 ssize_t gnrc_sixlowpan_ghc_decode_srh(uint8_t *dst, size_t dst_max,
                                       const uint8_t *src, size_t src_len,
-                                      const ipv6_hdr_t *ipv6)
+                                      const ipv6_hdr_t *ipv6, size_t *consumed)
 {
     // Destination pointer (writing to)
     size_t d_idx = 0;
@@ -115,6 +115,10 @@ ssize_t gnrc_sixlowpan_ghc_decode_srh(uint8_t *dst, size_t dst_max,
 
         // Terminiation, return the total uncompressed size
         else if (GHC_IS_STOP(code)){
+            if (*consumed != NULL) {
+                // Number of bytes we read from the source buffer
+                *consumed = s_idx;
+            }
             return (int)d_idx;
         }
 

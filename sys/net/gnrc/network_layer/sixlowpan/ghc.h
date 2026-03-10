@@ -35,6 +35,7 @@ extern "C" {
  * @param[in]  src      Source buffer containing the GHC compressed data
  * @param[in]  src_len  Length of the source buffer
  * @param[in]  ipv6     The IPv6 header (used for dictionary initialization)
+ * @param[out] consumed Number of bytes consumed from the source buffer
  *
  * @return  The size of the uncompressed SRH on success
  * @return  -ENOSPC if the destination buffer is too small
@@ -42,7 +43,7 @@ extern "C" {
  */
 ssize_t gnrc_sixlowpan_ghc_decode_srh(uint8_t *dst, size_t dst_max,
                                       const uint8_t *src, size_t src_len,
-                                      const ipv6_hdr_t *ipv6);
+                                      const ipv6_hdr_t *ipv6, size_t *consumed);
 
 /**
  * @brief   Encodes an SRH using GHC compression.

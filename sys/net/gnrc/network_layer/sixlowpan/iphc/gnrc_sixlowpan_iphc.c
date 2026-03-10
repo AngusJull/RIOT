@@ -114,6 +114,7 @@
 #define NHC_IPV6_EXT_EID_MOB        (0x04 << 1)
 #define NHC_IPV6_EXT_EID_IPV6       (0x07 << 1)
 
+// According to RFC 7400, 1011 EEE N (EEE is 001 for routing header, and N is 0 for uncompressed NH)
 #define NHC_GHC_ID                  (0xB0)
 #define NHC_GHC_MASK                (0xF8)
 
@@ -488,12 +489,15 @@ static size_t _iphc_nhc_ghc_decode(gnrc_pktsnip_t *sixlo, size_t offset,
     
     // Decode to a temporary buffer first to find out the uncompressed size
     uint8_t tmp_buf[255]; 
+
+    // Track compressed bytes read
+    size_t consumed_bytes = 0;
     
     // Pass the rest of the payload into the decoder
     ssize_t decomp_size = gnrc_sixlowpan_ghc_decode_srh(tmp_buf, sizeof(tmp_buf), 
                                                         &payload[offset], 
                                                         sixlo->size - offset, 
-                                                        ipv6_hdr);
+                                                        ipv6_hdr, &consumed_bytes);
     // Check for failure
     if (decomp_size < 0) return 0;
     
@@ -510,12 +514,12 @@ static size_t _iphc_nhc_ghc_decode(gnrc_pktsnip_t *sixlo, size_t offset,
     // Update the previous header to point to this rh
     ((uint8_t *)ipv6->data)[*prev_nh_offset] = PROTNUM_IPV6_EXT_RH;
     
-    // Point prev_nh_offset to the 'nh' field of this newly decompressed header
+    // Point prev_nh_offset to the nh field of this newly decompressed header
     *prev_nh_offset = *uncomp_hdr_len; 
     *uncomp_hdr_len += decomp_size;
     
-    // GHC consumes the entire remainder of the packet
-    return sixlo->size; 
+    // Move the offset forward by the number of compressed bytes we read
+    return offset + consumed_bytes; 
 }
 
 static ssize_t _nhc_ghc_encode_snip(gnrc_pktsnip_t *pkt, uint8_t *nhc_data,
@@ -524,6 +528,10 @@ static ssize_t _nhc_ghc_encode_snip(gnrc_pktsnip_t *pkt, uint8_t *nhc_data,
     gnrc_pktsnip_t *hdr = pkt->next->next;
     ssize_t nhc_len = 1;
     
+    // Calculate EXACT size of the routing header so we don't eat the payload
+    ipv6_ext_t *ext = hdr->data;
+    uint16_t ext_len = ((ext->len * 8) + 8); 
+
     // Set GHC NHC Header ID for Routing Header (EID 1)
     nhc_data[0] = NHC_GHC_ID | (0x01 << 1);
 
@@ -532,13 +540,15 @@ static ssize_t _nhc_ghc_encode_snip(gnrc_pktsnip_t *pkt, uint8_t *nhc_data,
                                                       hdr->data, hdr->size, ipv6);
 
     // Check for failure
-    if (comp_size < 0) return 0;
+    if (comp_size < 0){
+        return 0;
+    }
     nhc_len += comp_size;
     
     // Save the next header
-    *nh = ((ipv6_ext_t *)hdr->data)->nh;
+    *nh = ext->nh;
     
-    if (!_remove_header(pkt, hdr, hdr->size)) {
+    if (!_remove_header(pkt, hdr, ext_len)) {
         return -1;
     }
     return nhc_len;
