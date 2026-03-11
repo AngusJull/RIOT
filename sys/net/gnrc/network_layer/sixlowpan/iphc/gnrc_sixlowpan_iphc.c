@@ -43,7 +43,7 @@
 #include "net/gnrc/sixlowpan/iphc.h"
 #include "net/gnrc/sixlowpan/ghc.h"
 
-#define ENABLE_DEBUG 0
+#define ENABLE_DEBUG 1
 #include "debug.h"
 
 /* dispatch byte definitions */
@@ -551,7 +551,7 @@ static size_t _iphc_nhc_ghc_decode(gnrc_pktsnip_t *sixlo, size_t offset,
         *prev_nh_offset = *uncomp_hdr_len; // N=1: Another NHC follows. Keep going.
     }
 
-    *uncomp_hdr_len += decomp_size;
+    *uncomp_hdr_len += total_decomp_size;
     
     // Move the offset forward by the number of compressed bytes we read
     return offset + consumed_bytes; 
@@ -568,7 +568,13 @@ static ssize_t _nhc_ghc_encode_snip(gnrc_pktsnip_t *pkt, uint8_t *nhc_data,
     uint16_t ext_len = ((ext->len * 8) + 8); 
 
     // Evaluate the N bit and handle the nh byte
+    DEBUG("6lo iphc: evaluating N bit for RH with nh %u\n", ext->nh);
+    DEBUG("6lo iphc: nhc[0] before setting N bit: 0x%02x\n", nhc_data[0]);
+    
+    nhc_data[0] = NHC_GHC_ID | (0x01 << 1);
+
     if (_compressible_nh(ext->nh)) {
+        DEBUG("6lo iphc: compressing RH nh %u inline\n", ext->nh);
         nhc_data[0] |= NHC_IPV6_EXT_NH; // Set N=1
     } else {
         nhc_data[nhc_len++] = ext->nh;  // Set N=0, carry the nh byte inline
@@ -577,6 +583,8 @@ static ssize_t _nhc_ghc_encode_snip(gnrc_pktsnip_t *pkt, uint8_t *nhc_data,
     // Encode
     // Compress the rest of the header skipping the 1-byte nh field
     uint8_t *raw_hdr = (uint8_t *)hdr->data;
+    DEBUG("6lo iphc: encoding GHC for RH with nh %u, ext len %u, N=%u\n",
+          ext->nh, ext_len, (nhc_data[0] & NHC_IPV6_EXT_NH) ? 1 : 0);
     ssize_t comp_size = gnrc_sixlowpan_ghc_encode_srh(&nhc_data[nhc_len], 255, 
                                                       &raw_hdr[1], ext_len - 1, ipv6);
 
@@ -931,8 +939,11 @@ void gnrc_sixlowpan_iphc_recv(gnrc_pktsnip_t *sixlo, void *rbuf_ptr,
         size_t prev_nh_offset = (&ipv6_hdr->nh) - ((uint8_t *)ipv6->data);
 
         while (nhc_header) {
+            DEBUG("6lo iphc: NHC ID %u\n",
+                      (iphc_hdr[payload_offset] & NHC_ID_MASK) >> 5U);
             switch (iphc_hdr[payload_offset] & NHC_ID_MASK) {
                 case NHC_GHC_ID:
+                    DEBUG("6lo iphc: NHC GHC header present\n");
                     payload_offset = _iphc_nhc_ghc_decode(sixlo, payload_offset,
                                                           &prev_nh_offset,
                                                           ipv6,
@@ -1800,6 +1811,7 @@ static gnrc_pktsnip_t *_iphc_encode(gnrc_pktsnip_t *pkt,
             gnrc_pktbuf_release(dispatch);
             return NULL;
         }
+        DEBUG("6lo iphc: compressing next header with prot number %u\n", nh);
         switch (nh) {
             case PROTNUM_UDP:
                 local_pos = _nhc_udp_encode_snip(pkt, &iphc_hdr[inline_pos]);
@@ -1812,6 +1824,7 @@ static gnrc_pktsnip_t *_iphc_encode(gnrc_pktsnip_t *pkt,
                 break;
             }
             case PROTNUM_IPV6_EXT_RH: {
+                DEBUG("6lo iphc: encoding IPv6 routing header as next header using GHC\n");
                 local_pos = _nhc_ghc_encode_snip(pkt, &iphc_hdr[inline_pos], &nh, ipv6_hdr);
                 if (local_pos == 0) {
                     nh = PROTNUM_RESERVED;
@@ -1822,6 +1835,7 @@ static gnrc_pktsnip_t *_iphc_encode(gnrc_pktsnip_t *pkt,
             case PROTNUM_IPV6_EXT_FRAG:
             case PROTNUM_IPV6_EXT_DST:
             case PROTNUM_IPV6_EXT_MOB:
+                DEBUG("6lo iphc: encoding IPv6 extension header (nh=%u) as next header\n", nh);
                 local_pos = _nhc_ipv6_ext_encode_snip(pkt,
                                                       &iphc_hdr[inline_pos],
                                                       &nh);
@@ -1832,6 +1846,7 @@ static gnrc_pktsnip_t *_iphc_encode(gnrc_pktsnip_t *pkt,
                 }
                 break;
             default:
+            DEBUG("6lo iphc: next header with prot number %u is not compressible\n", nh);
                 /* abort loop on next iteration */
                 nh = PROTNUM_RESERVED;
                 break;

@@ -270,7 +270,7 @@ ssize_t gnrc_sixlowpan_ghc_encode_srh(uint8_t *out, size_t out_max,
             else {
                 // Encode Backreference
                 uint8_t n_val = best_len - 2; // -2 here so that we ensure a minimum length of 2 is encoded
-                uint8_t k_val = best_offset - best_len;
+                uint16_t k_val = best_offset - best_len;
                 uint8_t sa_total = (k_val >> 3);
                 uint8_t na_total = (n_val >> 3);
 
