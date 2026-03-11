@@ -474,6 +474,24 @@ static bool _remove_header(gnrc_pktsnip_t *pkt, gnrc_pktsnip_t *hdr,
     return true;
 }
 
+static inline bool _compressible_nh(uint8_t nh)
+{
+    switch (nh) {
+#ifdef MODULE_GNRC_SIXLOWPAN_IPHC_NHC
+        case PROTNUM_IPV6_EXT_HOPOPT:
+        case PROTNUM_UDP:
+        case PROTNUM_IPV6:
+        case PROTNUM_IPV6_EXT_RH:
+        case PROTNUM_IPV6_EXT_FRAG:
+        case PROTNUM_IPV6_EXT_DST:
+        case PROTNUM_IPV6_EXT_MOB:
+            return true;
+#endif
+        default:
+            return false;
+    }
+}
+
 static size_t _iphc_nhc_ghc_decode(gnrc_pktsnip_t *sixlo, size_t offset,
                                    size_t *prev_nh_offset,
                                    gnrc_pktsnip_t *ipv6,
@@ -487,6 +505,12 @@ static size_t _iphc_nhc_ghc_decode(gnrc_pktsnip_t *sixlo, size_t offset,
     // Use the header to build the dictionary
     ipv6_hdr_t *ipv6_hdr = ipv6->data;
     
+    // Read inline nj of the N bit is 0
+    uint8_t inline_nh = 0;
+    if (!(ghc_nhc & NHC_IPV6_EXT_NH)) {
+        inline_nh = payload[offset++];
+    }
+
     // Decode to a temporary buffer first to find out the uncompressed size
     uint8_t tmp_buf[255]; 
 
@@ -501,21 +525,32 @@ static size_t _iphc_nhc_ghc_decode(gnrc_pktsnip_t *sixlo, size_t offset,
     // Check for failure
     if (decomp_size < 0) return 0;
     
+    // Total uncompressed size = LZ77 data + 1 byte for the skipped 'nh' field
+    size_t total_decomp_size = decomp_size + 1;
+    
     // Ensure there is enough space in the IPv6 snip for the uncompressed header
-    if (ipv6->size < (*uncomp_hdr_len + decomp_size)) {
-        if (gnrc_pktbuf_realloc_data(ipv6, *uncomp_hdr_len + decomp_size)) {
+    if (ipv6->size < (*uncomp_hdr_len + total_decomp_size)) {
+        if (gnrc_pktbuf_realloc_data(ipv6, *uncomp_hdr_len + total_decomp_size)) {
             return 0;
         }
     }
     
     // Copy decompressed data into the packet
-    memcpy(((uint8_t *)ipv6->data) + *uncomp_hdr_len, tmp_buf, decomp_size);
+    uint8_t *out_ptr = ((uint8_t *)ipv6->data) + *uncomp_hdr_len;
+    out_ptr[0] = inline_nh; // Place the 'nh' byte at the very front
+    memcpy(&out_ptr[1], tmp_buf, decomp_size); // Paste the decompressed data after it
     
     // Update the previous header to point to this rh
     ((uint8_t *)ipv6->data)[*prev_nh_offset] = PROTNUM_IPV6_EXT_RH;
     
     // Point prev_nh_offset to the nh field of this newly decompressed header
-    *prev_nh_offset = *uncomp_hdr_len; 
+    //Update Next Header tracking based on the N bit
+    if (!(ghc_nhc & NHC_IPV6_EXT_NH)) {
+        *prev_nh_offset = 0; // N=0: No more NHC headers follow. Stop the loop.
+    } else {
+        *prev_nh_offset = *uncomp_hdr_len; // N=1: Another NHC follows. Keep going.
+    }
+
     *uncomp_hdr_len += decomp_size;
     
     // Move the offset forward by the number of compressed bytes we read
@@ -528,16 +563,22 @@ static ssize_t _nhc_ghc_encode_snip(gnrc_pktsnip_t *pkt, uint8_t *nhc_data,
     gnrc_pktsnip_t *hdr = pkt->next->next;
     ssize_t nhc_len = 1;
     
-    // Calculate EXACT size of the routing header so we don't eat the payload
+    // Calculate exact size of the routing header so we don't eat the payload
     ipv6_ext_t *ext = hdr->data;
     uint16_t ext_len = ((ext->len * 8) + 8); 
 
-    // Set GHC NHC Header ID for Routing Header (EID 1)
-    nhc_data[0] = NHC_GHC_ID | (0x01 << 1);
+    // Evaluate the N bit and handle the nh byte
+    if (_compressible_nh(ext->nh)) {
+        nhc_data[0] |= NHC_IPV6_EXT_NH; // Set N=1
+    } else {
+        nhc_data[nhc_len++] = ext->nh;  // Set N=0, carry the nh byte inline
+    }
 
     // Encode
+    // Compress the rest of the header skipping the 1-byte nh field
+    uint8_t *raw_hdr = (uint8_t *)hdr->data;
     ssize_t comp_size = gnrc_sixlowpan_ghc_encode_srh(&nhc_data[nhc_len], 255, 
-                                                      hdr->data, hdr->size, ipv6);
+                                                      &raw_hdr[1], ext_len - 1, ipv6);
 
     // Check for failure
     if (comp_size < 0){
@@ -1170,24 +1211,6 @@ static int _forward_frag(gnrc_pktsnip_t *pkt, gnrc_pktsnip_t *frag_hdr,
 }
 #endif  /* MODULE_GNRC_SIXLOWPAN_FRAG_VRB */
 
-static inline bool _compressible_nh(uint8_t nh)
-{
-    switch (nh) {
-#ifdef MODULE_GNRC_SIXLOWPAN_IPHC_NHC
-        case PROTNUM_IPV6_EXT_HOPOPT:
-        case PROTNUM_UDP:
-        case PROTNUM_IPV6:
-        case PROTNUM_IPV6_EXT_RH:
-        case PROTNUM_IPV6_EXT_FRAG:
-        case PROTNUM_IPV6_EXT_DST:
-        case PROTNUM_IPV6_EXT_MOB:
-            return true;
-#endif
-        default:
-            return false;
-    }
-}
-
 static size_t _iphc_ipv6_encode(gnrc_pktsnip_t *pkt,
                                 const gnrc_netif_hdr_t *netif_hdr,
                                 gnrc_netif_t *iface,
@@ -1766,7 +1789,8 @@ static gnrc_pktsnip_t *_iphc_encode(gnrc_pktsnip_t *pkt,
         gnrc_pktbuf_release(dispatch);
         return NULL;
     }
-
+    
+    ipv6_hdr_t *ipv6_hdr = pkt->next->data;
     nh = ((ipv6_hdr_t *)pkt->next->data)->nh;
 #ifdef MODULE_GNRC_SIXLOWPAN_IPHC_NHC
     while (_compressible_nh(nh)) {

@@ -17,7 +17,7 @@
 
 #include <string.h>
 #include <errno.h>
-#include "sys/include/net/gnrc/sixlowan/ghc.h"
+#include "net/gnrc/sixlowpan/ghc.h"
 
 #define ENABLE_DEBUG 0
 #include "debug.h"
@@ -115,7 +115,7 @@ ssize_t gnrc_sixlowpan_ghc_decode_srh(uint8_t *dst, size_t dst_max,
 
         // Terminiation, return the total uncompressed size
         else if (GHC_IS_STOP(code)){
-            if (*consumed != NULL) {
+            if (consumed != NULL) {
                 // Number of bytes we read from the source buffer
                 *consumed = s_idx;
             }
