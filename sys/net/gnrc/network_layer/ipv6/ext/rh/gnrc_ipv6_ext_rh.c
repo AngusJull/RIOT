@@ -26,21 +26,22 @@
 #include "net/gnrc/srv6/srh.h"
 
 #ifdef MODULE_GNRC_RPL_SRH
-#include "net/gnrc/rpl/srh.h"
+#  include "net/gnrc/rpl/srh.h"
 #endif
 
 #include "net/gnrc/ipv6/ext/rh.h"
 
-#define ENABLE_DEBUG 1
+#define ENABLE_DEBUG 0
 #include "debug.h"
 
-static void debug_print_snip_chain(const char *msg, gnrc_pktsnip_t *pkt) {
+static void debug_print_snip_chain(const char *msg, gnrc_pktsnip_t *pkt)
+{
     DEBUG("[SRv6 SRH] %s: snip chain: ", msg);
     while (pkt) {
-        printf("[%d:%u]->", pkt->type, (unsigned)pkt->size);
+        DEBUG("[%d:%u]->", pkt->type, (unsigned)pkt->size);
         pkt = pkt->next;
     }
-    puts("NULL");
+    DEBUG("NULL");
 }
 
 /* unchecked precondition: hdr is gnrc_pktsnip_t::data of the
@@ -101,9 +102,9 @@ int gnrc_ipv6_ext_rh_process(gnrc_pktsnip_t *pkt)
 #endif
 #ifdef MODULE_GNRC_SRV6_SRH
     case IPV6_EXT_RH_TYPE_SRV6:
-        printf("IPv6 ext RH: SRv6 packet recieved. Processing.\n");
+        DEBUG("IPv6 ext RH: SRv6 packet recieved. Processing.\n");
         debug_print_snip_chain("in ipv6 ext rh process", pkt);
-        printf("[DEBUG] Total pkt length: %u\n", (unsigned)gnrc_pkt_len(pkt));
+        DEBUG("[DEBUG] Total pkt length: %u\n", (unsigned)gnrc_pkt_len(pkt));
         res = gnrc_srv6_srh_process(hdr, (gnrc_srv6_srh_t *)ext, &err_ptr);
         break;
 #endif
@@ -126,11 +127,11 @@ int gnrc_ipv6_ext_rh_process(gnrc_pktsnip_t *pkt)
         _forward_pkt(pkt, hdr);
         break;
     case GNRC_IPV6_EXT_RH_AT_DST:
-        printf("IPv6 ext RH: Packet is at final destination. Unpacking...\n");
+        DEBUG("IPv6 ext RH: Packet is at final destination. Unpacking...\n");
         if (ext->nh == PROTNUM_UDP) {
-            printf("IPv6 ext RH: UDP packet detected. Should dispatch to gnrc UDP handler.\n");
+            DEBUG("IPv6 ext RH: UDP packet detected. Should dispatch to gnrc UDP handler.\n");
             debug_print_snip_chain("before UDP handler", pkt);
-            printf("[DEBUG] Total pkt length: %u\n", (unsigned)gnrc_pkt_len(pkt));
+            DEBUG("[DEBUG] Total pkt length: %u\n", (unsigned)gnrc_pkt_len(pkt));
             // gnrc_netapi_dispatch_receive(GNRC_NETTYPE_UDP, GNRC_NETREG_DEMUX_CTX_ALL, pkt);
         }
         break;
@@ -139,8 +140,7 @@ int gnrc_ipv6_ext_rh_process(gnrc_pktsnip_t *pkt)
         if (err_ptr) {
             gnrc_icmpv6_error_param_prob_send(
                 ICMPV6_ERROR_PARAM_PROB_HDR_FIELD,
-                        err_ptr, pkt
-                    );
+                err_ptr, pkt);
         }
 #else
         (void)err_ptr;

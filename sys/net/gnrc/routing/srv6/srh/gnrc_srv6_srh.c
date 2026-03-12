@@ -6,7 +6,7 @@
 #include "net/gnrc/netapi.h"
 #include "net/gnrc/netreg.h"
 
-#define ENABLE_DEBUG 1
+#define ENABLE_DEBUG 0
 #include "debug.h"
 
 static char addr_str[IPV6_ADDR_MAX_STR_LEN];
@@ -50,7 +50,7 @@ int gnrc_srv6_srh_process(ipv6_hdr_t *ipv6, gnrc_srv6_srh_t *rh, void **err_ptr)
     memcpy(&ipv6->dst, next_hop, sizeof(ipv6_addr_t));
 
 
-    /* 5. Return ERROR or a custom code to STOP the current thread 
+    /* 5. Return ERROR or a custom code to STOP the current thread
      * from trying to process the packet further locally. */
     return GNRC_IPV6_EXT_RH_FORWARDED;
 }

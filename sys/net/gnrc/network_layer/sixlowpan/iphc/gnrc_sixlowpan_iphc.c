@@ -43,7 +43,7 @@
 #include "net/gnrc/sixlowpan/iphc.h"
 #include "net/gnrc/sixlowpan/ghc.h"
 
-#define ENABLE_DEBUG 1
+#define ENABLE_DEBUG 0
 #include "debug.h"
 
 /* dispatch byte definitions */
@@ -501,10 +501,10 @@ static size_t _iphc_nhc_ghc_decode(gnrc_pktsnip_t *sixlo, size_t offset,
 
     // Read the GHC ID byte
     uint8_t ghc_nhc = payload[offset++];
-    
+
     // Use the header to build the dictionary
     ipv6_hdr_t *ipv6_hdr = ipv6->data;
-    
+
     // Read inline nj of the N bit is 0
     uint8_t inline_nh = 0;
     if (!(ghc_nhc & NHC_IPV6_EXT_NH)) {
@@ -512,37 +512,37 @@ static size_t _iphc_nhc_ghc_decode(gnrc_pktsnip_t *sixlo, size_t offset,
     }
 
     // Decode to a temporary buffer first to find out the uncompressed size
-    uint8_t tmp_buf[255]; 
+    uint8_t tmp_buf[255];
 
     // Track compressed bytes read
     size_t consumed_bytes = 0;
-    
+
     // Pass the rest of the payload into the decoder
-    ssize_t decomp_size = gnrc_sixlowpan_ghc_decode_srh(tmp_buf, sizeof(tmp_buf), 
-                                                        &payload[offset], 
-                                                        sixlo->size - offset, 
+    ssize_t decomp_size = gnrc_sixlowpan_ghc_decode_srh(tmp_buf, sizeof(tmp_buf),
+                                                        &payload[offset],
+                                                        sixlo->size - offset,
                                                         ipv6_hdr, &consumed_bytes);
     // Check for failure
     if (decomp_size < 0) return 0;
-    
+
     // Total uncompressed size = LZ77 data + 1 byte for the skipped 'nh' field
     size_t total_decomp_size = decomp_size + 1;
-    
+
     // Ensure there is enough space in the IPv6 snip for the uncompressed header
     if (ipv6->size < (*uncomp_hdr_len + total_decomp_size)) {
         if (gnrc_pktbuf_realloc_data(ipv6, *uncomp_hdr_len + total_decomp_size)) {
             return 0;
         }
     }
-    
+
     // Copy decompressed data into the packet
     uint8_t *out_ptr = ((uint8_t *)ipv6->data) + *uncomp_hdr_len;
     out_ptr[0] = inline_nh; // Place the 'nh' byte at the very front
     memcpy(&out_ptr[1], tmp_buf, decomp_size); // Paste the decompressed data after it
-    
+
     // Update the previous header to point to this rh
     ((uint8_t *)ipv6->data)[*prev_nh_offset] = PROTNUM_IPV6_EXT_RH;
-    
+
     // Point prev_nh_offset to the nh field of this newly decompressed header
     //Update Next Header tracking based on the N bit
     if (!(ghc_nhc & NHC_IPV6_EXT_NH)) {
@@ -552,9 +552,9 @@ static size_t _iphc_nhc_ghc_decode(gnrc_pktsnip_t *sixlo, size_t offset,
     }
 
     *uncomp_hdr_len += total_decomp_size;
-    
+
     // Move the offset forward by the number of compressed bytes we read
-    return offset + consumed_bytes; 
+    return offset + consumed_bytes;
 }
 
 static ssize_t _nhc_ghc_encode_snip(gnrc_pktsnip_t *pkt, uint8_t *nhc_data,
@@ -562,15 +562,15 @@ static ssize_t _nhc_ghc_encode_snip(gnrc_pktsnip_t *pkt, uint8_t *nhc_data,
 {
     gnrc_pktsnip_t *hdr = pkt->next->next;
     ssize_t nhc_len = 1;
-    
+
     // Calculate exact size of the routing header so we don't eat the payload
     ipv6_ext_t *ext = hdr->data;
-    uint16_t ext_len = ((ext->len * 8) + 8); 
+    uint16_t ext_len = ((ext->len * 8) + 8);
 
     // Evaluate the N bit and handle the nh byte
     DEBUG("6lo iphc: evaluating N bit for RH with nh %u\n", ext->nh);
     DEBUG("6lo iphc: nhc[0] before setting N bit: 0x%02x\n", nhc_data[0]);
-    
+
     nhc_data[0] = NHC_GHC_ID | (0x01 << 1);
 
     if (_compressible_nh(ext->nh)) {
@@ -585,7 +585,7 @@ static ssize_t _nhc_ghc_encode_snip(gnrc_pktsnip_t *pkt, uint8_t *nhc_data,
     uint8_t *raw_hdr = (uint8_t *)hdr->data;
     DEBUG("6lo iphc: encoding GHC for RH with nh %u, ext len %u, N=%u\n",
           ext->nh, ext_len, (nhc_data[0] & NHC_IPV6_EXT_NH) ? 1 : 0);
-    ssize_t comp_size = gnrc_sixlowpan_ghc_encode_srh(&nhc_data[nhc_len], 255, 
+    ssize_t comp_size = gnrc_sixlowpan_ghc_encode_srh(&nhc_data[nhc_len], 255,
                                                       &raw_hdr[1], ext_len - 1, ipv6);
 
     // Check for failure
@@ -593,10 +593,10 @@ static ssize_t _nhc_ghc_encode_snip(gnrc_pktsnip_t *pkt, uint8_t *nhc_data,
         return 0;
     }
     nhc_len += comp_size;
-    
+
     // Save the next header
     *nh = ext->nh;
-    
+
     if (!_remove_header(pkt, hdr, ext_len)) {
         return -1;
     }
@@ -955,7 +955,7 @@ void gnrc_sixlowpan_iphc_recv(gnrc_pktsnip_t *sixlo, void *rbuf_ptr,
                     }
                     nhc_header = (prev_nh_offset > 0);
                     break;
-                    
+
                 case NHC_IPV6_EXT_ID:
                 case NHC_IPV6_EXT_ID_ALT:
                     payload_offset = _iphc_nhc_ipv6_decode(sixlo,
@@ -1800,7 +1800,7 @@ static gnrc_pktsnip_t *_iphc_encode(gnrc_pktsnip_t *pkt,
         gnrc_pktbuf_release(dispatch);
         return NULL;
     }
-    
+
     ipv6_hdr_t *ipv6_hdr = pkt->next->data;
     nh = ((ipv6_hdr_t *)pkt->next->data)->nh;
 #ifdef MODULE_GNRC_SIXLOWPAN_IPHC_NHC
