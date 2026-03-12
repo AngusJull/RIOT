@@ -21,7 +21,7 @@
 #include "pktbuf_internal.h"
 
 
-#define ENABLE_DEBUG 1
+#define ENABLE_DEBUG 0
 #include "debug.h"
 
 mutex_t gnrc_pktbuf_mutex = MUTEX_INIT;
