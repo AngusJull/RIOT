@@ -29,10 +29,10 @@ mutex_t gnrc_pktbuf_mutex = MUTEX_INIT;
 static void debug_print_snip_chain(const char *msg, gnrc_pktsnip_t *pkt) {
     DEBUG("[pktbuf] %s: snip chain: ", msg);
     while (pkt) {
-        printf("[%d:%u]->", pkt->type, (unsigned)pkt->size);
+        DEBUG("[%d:%u]->", pkt->type, (unsigned)pkt->size);
         pkt = pkt->next;
     }
-    puts("NULL");
+    DEBUG("NULL");
 }
 
 gnrc_pktsnip_t *gnrc_pktbuf_remove_snip(gnrc_pktsnip_t *pkt,
