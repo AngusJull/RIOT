@@ -519,13 +519,14 @@ static int _config_src_addr_match(ieee802154_dev_t *dev, ieee802154_src_match_t 
 
 static const ieee802154_radio_ops_t sx126x_ops = {
     // Some of these capabilities might not be entirely accurate, but should provide needed functionality
-    // Add the FSK capability, which is only half wrong because although the radio has FSK, we won't use it
+    // OQPSK phy mode is the default for the submac and it is easiest to pretend we have that one, so we get
+    // an easier to change ack timeout and other default handling
     .caps = IEEE802154_CAP_SUB_GHZ |
             IEEE802154_CAP_IRQ_TX_DONE |
             IEEE802154_CAP_IRQ_CCA_DONE |
             IEEE802154_CAP_IRQ_RX_START |
             IEEE802154_CAP_IRQ_CRC_ERROR |
-            IEEE802154_CAP_PHY_MR_FSK,
+            IEEE802154_CAP_PHY_OQPSK,
     .write = _write,
     .len = _len,
     .read = _read,
